@@ -1,3 +1,6 @@
+# archivo con credenciales que no se deven filtrar
+credenciales.txt
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
