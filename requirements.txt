@@ -1,0 +1,5 @@
+openpyxl==3.1.5
+WMI==1.5.1
+pywin32==311
+fastapi==0.165.0
+uvicorn==0.54.0

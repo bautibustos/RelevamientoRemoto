@@ -9,6 +9,7 @@ with open('credenciales.txt', 'r', encoding='utf-8') as file:
 equipo = {
     'so':None,
     'cpu':None,
+    'cpu_mhz':None,
     'placa':None,
     'memoria':{'ddr':None,
                'capacidad':[],
@@ -25,6 +26,7 @@ def cleaner():
     equipo={
     'so':None,
     'cpu':None,
+    'cpu_mhz':None,
     'placa':None,
     'memoria':{'ddr':None,
                'capacidad':[],
@@ -38,7 +40,8 @@ def cleaner():
 
 def casi_completo(identificador):
     # Conexión a un equipo remoto
-    c = wmi.WMI(identificador, user=us, password=pwd)#namespace="root\\Microsoft\\Windows\\Storage"
+    print(identificador)
+    c = wmi.WMI(identificador, user="USUARIO", password="REDACTADO")#namespace="root\\Microsoft\\Windows\\Storage"
     # obtension de valores desde "c" que es la informacion del equipo completo
     
     for os in c.Win32_OperatingSystem():
@@ -46,6 +49,7 @@ def casi_completo(identificador):
 
     for cpu in c.Win32_Processor():
         equipo['cpu']=str(cpu.name).split()
+        equipo['cpu_mhz']=cpu.MaxClockSpeed
 
     for mother in c.Win32_BaseBoard():
         #print(mother)
@@ -90,11 +94,17 @@ def casi_completo(identificador):
         # Se muestra el nombre, el tipo estimado y la RAM
     equipo['video']=nombre_gpu
 
+# MSFT_PhysicalDisk.BusType -> nombre (7 = USB se descarta antes)
+BUS_MAP = {1: 'SCSI', 3: 'ATA', 8: 'RAID', 10: 'SAS', 11: 'SATA', 17: 'NVMe'}
+
 # la funcion discos se separa ya que utiliza otro parametro que la funcion anterior no necesita y probooca error
 def discos(identificador):
 
     c = wmi.WMI(identificador, user=us, password=pwd,namespace="root\\Microsoft\\Windows\\Storage")#
     for disk in c.MSFT_PhysicalDisk():
+        # BusType 7 = USB: solo se registran discos instalados en el equipo
+        if int(disk.BusType or 0) == 7:
+            continue
         #print(disk)
         #se calcula la capacidad
         capacidad = round(int(disk.Size) / (1024**3), 2)
@@ -105,7 +115,9 @@ def discos(identificador):
         equipo['disco'].append({
         'marca': disk.Model,
         'capacidad':capacidad,
-        'tecnologia':tipo_disco
+        'tecnologia':tipo_disco,
+        'bus': BUS_MAP.get(int(disk.BusType or 0), 'otro'),
+        'serie': (disk.SerialNumber or '').strip() or None
         })
  
 def obtener_usuario(identificador):
