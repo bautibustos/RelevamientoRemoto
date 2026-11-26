@@ -108,6 +108,7 @@ def _leer(con, where='', params=()):
 # ---------------------------------------------------------------- endpoints
 @router.get('', response_model=list[Monitor], summary='Listar monitores')
 def listar_monitores(
+    q: str | None = Query(None, description='Texto en marca, modelo, número de serie o PC'),
     area_id: int | None = Query(None),
     piso: str | None = Query(None),
     equipo_id: int | None = Query(None, description='Monitores conectados a esta PC'),
@@ -115,6 +116,13 @@ def listar_monitores(
     con: sqlite3.Connection = Depends(get_db),
 ):
     condiciones, params = [], []
+    if q and q.strip():
+        patron = '%' + q.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+        condiciones.append(
+            "(m.marca LIKE ? ESCAPE '\\' OR m.modelo LIKE ? ESCAPE '\\'"
+            " OR m.numero_serie LIKE ? ESCAPE '\\' OR e.nombre LIKE ? ESCAPE '\\')"
+        )
+        params.extend([patron] * 4)
     if area_id is not None:
         condiciones.append('m.area_id = ?'); params.append(area_id)
     if piso:

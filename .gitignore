@@ -18,6 +18,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+# el código de la app Flutter sí se versiona
+!frontend/lib/
 lib64/
 parts/
 sdist/

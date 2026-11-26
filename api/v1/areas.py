@@ -15,12 +15,28 @@ class AreaCrear(BaseModel):
     @field_validator('nombre', mode='before')
     @classmethod
     def _nombre(cls, v):
-        return limpiar(v)
+        v = limpiar(v)
+        if v is None:
+            raise ValueError('El nombre del área no puede estar vacío.')
+        return v
 
 
-@router.get('', response_model=list[Area], summary='Listar áreas')
+class AreaResumen(Area):
+    cantidad_pc: int
+    cantidad_monitores: int
+
+
+@router.get('', response_model=list[AreaResumen], summary='Listar áreas con la cantidad de equipos')
 def listar_areas(con: sqlite3.Connection = Depends(get_db)):
-    return [dict(r) for r in con.execute('SELECT id, nombre FROM areas ORDER BY nombre')]
+    return [dict(r) for r in con.execute(
+        """
+        SELECT a.id, a.nombre,
+               (SELECT COUNT(*) FROM equipos   e WHERE e.area_id = a.id) AS cantidad_pc,
+               (SELECT COUNT(*) FROM monitores m WHERE m.area_id = a.id) AS cantidad_monitores
+        FROM areas a
+        ORDER BY a.nombre
+        """
+    )]
 
 
 @router.post('', response_model=Area, status_code=201, summary='Crear un área')

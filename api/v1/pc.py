@@ -89,12 +89,17 @@ def _a_dict(fila):
 # ---------------------------------------------------------------- endpoints
 @router.get('', response_model=list[PC], summary='Listar PCs')
 def listar_pcs(
+    q: str | None = Query(None, description='Parte del nombre del equipo'),
     area_id: int | None = Query(None),
     piso: str | None = Query(None),
     estado: Estado | None = Query(None),
     con: sqlite3.Connection = Depends(get_db),
 ):
     condiciones, params = [], []
+    if q and q.strip():
+        # se escapan % y _ para que se busquen como texto literal
+        patron = q.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        condiciones.append("e.nombre LIKE ? ESCAPE '\\'"); params.append(f'%{patron}%')
     if area_id is not None:
         condiciones.append('e.area_id = ?'); params.append(area_id)
     if piso:
