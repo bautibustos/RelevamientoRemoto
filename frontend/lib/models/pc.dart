@@ -27,16 +27,49 @@ class ResultadoPing {
       ResultadoPing(responde: json['responde'] as bool, detalle: json['detalle'] as String? ?? '');
 }
 
-class Disco {
-  const Disco({this.modelo, required this.tecnologia, this.bus, this.capacidadGb});
+/// Formatea GB sin decimales de más: 16.0 -> "16", 0.5 -> "0,5".
+String gbTexto(double gb) =>
+    gb == gb.roundToDouble() ? gb.toStringAsFixed(0) : gb.toStringAsFixed(1).replaceAll('.', ',');
 
-  final String? modelo;
+/// Un módulo de RAM: capacidad y velocidad propias (una PC puede tener 16 GB a 2666 + 4 GB a 2133).
+/// Resultado de volver a relevar una PC (POST /pc/{id}/relevar).
+class ResultadoRelevamiento {
+  const ResultadoRelevamiento({required this.ok, required this.detalle});
+
+  final bool ok;
+  final String detalle;
+
+  factory ResultadoRelevamiento.fromJson(Map<String, dynamic> json) =>
+      ResultadoRelevamiento(ok: json['ok'] as bool, detalle: json['detalle'] as String? ?? '');
+}
+
+class Memoria {
+  const Memoria({required this.capacidadGb, this.mhz});
+
+  final double capacidadGb;
+  final int? mhz;
+
+  String get texto => [ '${gbTexto(capacidadGb)} GB', if (mhz != null) '$mhz MHz'].join(' ');
+
+  Map<String, dynamic> toJson() => {'capacidad_gb': capacidadGb, 'mhz': mhz};
+
+  factory Memoria.fromJson(Map<String, dynamic> json) =>
+      Memoria(capacidadGb: (json['capacidad_gb'] as num).toDouble(), mhz: json['mhz'] as int?);
+}
+
+class Disco {
+  const Disco({this.marca, required this.tecnologia, this.bus, this.capacidadGb});
+
+  final String? marca;
   final String tecnologia;
   final String? bus;
   final double? capacidadGb;
 
+  Map<String, dynamic> toJson() =>
+      {'marca': marca, 'tecnologia': tecnologia, 'bus': bus, 'capacidad_gb': capacidadGb};
+
   factory Disco.fromJson(Map<String, dynamic> json) => Disco(
-        modelo: json['modelo'] as String?,
+        marca: json['marca'] as String?,
         tecnologia: json['tecnologia'] as String,
         bus: json['bus'] as String?,
         capacidadGb: (json['capacidad_gb'] as num?)?.toDouble(),
@@ -61,6 +94,7 @@ class Pc {
     this.video,
     this.ramTipo,
     this.ramTotalGb,
+    this.memorias = const [],
     this.ultimoError,
     this.fechaRelevamiento,
     this.discos = const [],
@@ -81,7 +115,10 @@ class Pc {
   final String? placaModelo;
   final String? video;
   final String? ramTipo;
-  final int? ramTotalGb;
+  final double? ramTotalGb;
+
+  /// Módulos de RAM con su capacidad y MHz. Solo viene en el detalle.
+  final List<Memoria> memorias;
   final String? ultimoError;
   final String? fechaRelevamiento;
   final List<Disco> discos;
@@ -102,7 +139,10 @@ class Pc {
         placaModelo: json['placa_modelo'] as String?,
         video: json['video'] as String?,
         ramTipo: json['ram_tipo'] as String?,
-        ramTotalGb: json['ram_total_gb'] as int?,
+        ramTotalGb: (json['ram_total_gb'] as num?)?.toDouble(),
+        memorias: [
+          for (final m in (json['memorias'] as List?) ?? const []) Memoria.fromJson(m as Map<String, dynamic>),
+        ],
         ultimoError: json['ultimo_error'] as String?,
         fechaRelevamiento: json['fecha_relevamiento'] as String?,
         discos: [

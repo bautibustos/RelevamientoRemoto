@@ -186,7 +186,7 @@ class _ConsultarPcScreenState extends State<ConsultarPcScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 96), // espacio para el botón Cargar
                 itemCount: pcs.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, i) => _FilaPc(pc: pcs[i]),
+                itemBuilder: (context, i) => _FilaPc(pc: pcs[i], onModificada: _buscar),
               ),
             ),
           ],
@@ -197,9 +197,10 @@ class _ConsultarPcScreenState extends State<ConsultarPcScreen> {
 }
 
 class _FilaPc extends StatelessWidget {
-  const _FilaPc({required this.pc});
+  const _FilaPc({required this.pc, required this.onModificada});
 
   final Pc pc;
+  final VoidCallback onModificada;
 
   @override
   Widget build(BuildContext context) {
@@ -211,7 +212,9 @@ class _FilaPc extends StatelessWidget {
       titulo: pc.nombre,
       subtitulo: ubicacion,
       etiqueta: EtiquetaEstado(estado: pc.estado),
-      onTap: () => mostrarDetallePc(context, pc),
+      onTap: () async {
+        if (await mostrarDetallePc(context, pc)) onModificada(); // refleja lo editado en la lista
+      },
     );
   }
 }

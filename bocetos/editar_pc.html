@@ -1,0 +1,258 @@
+<title>Editar PC</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: una columna mobile-first (máx. 560px), secciones apiladas y barra de acciones fija abajo */
+:root{
+  --bg:#F3F6F6; --surface:#FFFFFF; --fg:#17201F; --muted:#5B6967; --line:#D6DEDD;
+  --accent:#0F6E7A; --on-accent:#FFFFFF; --accent-soft:#E1F0F1;
+  --ok:#1E7A46; --ok-soft:#E2F3E8; --warn:#8A5A00; --warn-soft:#FBF0D9; --danger:#B3261E;
+  --font:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0F1414; --surface:#182120; --fg:#E3ECEB; --muted:#9AAAA8; --line:#2C3938;
+  --accent:#5CC3CF; --on-accent:#062A2F; --accent-soft:#163A3E;
+  --ok:#6FD39A; --ok-soft:#173526; --warn:#F2C26B; --warn-soft:#3A2E14; --danger:#F2B8B5; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1414; --surface:#182120; --fg:#E3ECEB; --muted:#9AAAA8; --line:#2C3938;
+  --accent:#5CC3CF; --on-accent:#062A2F; --accent-soft:#163A3E;
+  --ok:#6FD39A; --ok-soft:#173526; --warn:#F2C26B; --warn-soft:#3A2E14; --danger:#F2B8B5; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.45}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+.barra{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line);
+  padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.barra-in{max-width:560px;margin:0 auto;display:flex;align-items:center;gap:4px;min-height:56px}
+.barra h1{font-size:19px;font-weight:600;margin:0;line-height:1.2}
+.barra small{display:block;color:var(--muted);font-size:13px;font-weight:400}
+.icono{width:44px;height:44px;border:0;background:none;color:var(--fg);border-radius:50%;display:grid;place-items:center;cursor:pointer;flex:none}
+.icono:hover{background:var(--accent-soft)}
+main{max-width:560px;margin:0 auto;padding-block:16px 120px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:16px}
+.estado{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px}
+.estado .txt{flex:1 1 180px;min-width:0}
+.estado .txt b{display:block;font-weight:600}
+.estado .txt span{color:var(--muted);font-size:13px}
+.pildora{font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--ok-soft);color:var(--ok);letter-spacing:.02em}
+.pildora.warn{background:var(--warn-soft);color:var(--warn)}
+section{background:var(--surface);border:1px solid var(--line);border-radius:12px}
+section>header{display:flex;align-items:center;gap:8px;padding:12px 8px 12px 16px;cursor:pointer;min-height:52px;user-select:none}
+section>header h2{font-size:15px;font-weight:600;margin:0;flex:1}
+section>header .cuenta{font-size:12px;color:var(--accent);font-weight:600}
+section>header svg{transition:transform .2s}
+section.cerrada>header svg{transform:rotate(-90deg)}
+section.cerrada .cuerpo{display:none}
+.cuerpo{padding:0 16px 16px;display:flex;flex-direction:column;gap:14px}
+.nota{font-size:13px;color:var(--muted);margin:0;padding:10px 12px;background:var(--bg);border-radius:8px}
+.fila{display:grid;gap:12px;grid-template-columns:repeat(var(--cols,2),minmax(0,1fr))}
+.campo{display:flex;flex-direction:column;gap:4px;position:relative;min-width:0}
+.campo label{font-size:12px;color:var(--muted);font-weight:500;letter-spacing:.02em}
+.campo input,.campo select{height:48px;width:100%;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg);
+  padding:0 12px;font:inherit;font-variant-numeric:tabular-nums}
+.campo input::placeholder{color:var(--muted);opacity:.8}
+.campo input:focus,.campo select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.campo.mod input,.campo.mod select{border-color:var(--accent);background:var(--accent-soft)}
+.campo.mod label::after{content:" · modificado";color:var(--accent);font-weight:600}
+.campo .ayuda{font-size:12px;color:var(--warn)}
+.ram{border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:12px}
+.ram-tit{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.ram-tit b{flex:1;font-size:14px}
+.ram-tit span{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.ram-tit span strong{color:var(--fg)}
+.modulo{display:flex;align-items:flex-end;gap:8px}
+.modulo .campo{flex:1}
+.modulo.nuevo input{border-style:dashed;border-color:var(--accent)}
+.disco{border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:12px}
+.disco.nuevo{border-style:dashed;border-color:var(--accent)}
+.disco .tit{display:flex;align-items:center;gap:8px}
+.disco .tit b{flex:1;font-size:14px}
+.segmento{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;height:48px}
+.segmento button{flex:1;border:0;background:var(--surface);color:var(--fg);font:inherit;cursor:pointer}
+.segmento button+button{border-left:1px solid var(--line)}
+.segmento button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);font-weight:600}
+.btn{height:48px;border-radius:24px;padding:0 20px;font:inherit;font-weight:600;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--fg);display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.primario{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.texto{border-color:transparent;color:var(--accent);padding:0 12px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn:focus-visible,.icono:focus-visible,.segmento button:focus-visible,section>header:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.acciones{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);z-index:6;
+  padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.acciones-in{max-width:560px;margin:0 auto;display:flex;align-items:center;gap:12px}
+.acciones .cambios{flex:1;font-size:13px;color:var(--muted)}
+.acciones .cambios b{color:var(--accent)}
+.aviso{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(88px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);
+  padding:12px 16px;border-radius:10px;font-size:14px;z-index:7;max-width:calc(100% - 32px);display:flex;gap:8px;align-items:center}
+@media (max-width:380px){.fila.tres{--cols:2}.fila.tres .campo:last-child{grid-column:1/-1}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="barra"><div class="barra-in">
+  <button class="icono" aria-label="Volver" type="button"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20z"/></svg></button>
+  <h1>Editar PC<small>[EQUIPO 01]</small></h1>
+</div></div>
+
+<main>
+  <div class="estado">
+    <span class="pildora" id="pildora">OK</span>
+    <div class="txt"><b id="estadoTit">Relevada</b><span id="estadoSub">Último relevamiento: [FECHA RELEVAMIENTO]</span></div>
+    <button class="btn" type="button" id="relevar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 6.4A8 8 0 1 0 19.7 14h-2.1A6 6 0 1 1 12 6c1.7 0 3.1.7 4.2 1.8L13 11h7V4z"/></svg>
+      Volver a relevar</button>
+  </div>
+
+  <section id="s-ubic">
+    <header tabindex="0" role="button" aria-expanded="true"><h2>Identificación y ubicación</h2><span class="cuenta"></span>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg></header>
+    <div class="cuerpo">
+      <div class="fila" style="--cols:5">
+        <div class="campo" style="grid-column:span 3"><label for="area">Área</label>
+          <select id="area" data-orig="1"><option value="1">[ÁREA 1]</option><option value="2">[ÁREA 2]</option></select></div>
+        <div class="campo" style="grid-column:span 2"><label for="piso">Piso</label><input id="piso" value="1" data-orig="1"></div>
+      </div>
+      <div class="campo"><label for="nombre">Nombre Equipo</label><input id="nombre" value="[EQUIPO 01]" data-orig="[EQUIPO 01]" autocapitalize="characters">
+        <span class="ayuda" id="ayudaNombre" hidden>Al guardar se vuelve a hacer ping con el nombre nuevo.</span></div>
+      <div class="campo"><label for="red">Red</label><input id="red" value="[RED]" data-orig="[RED]"></div>
+    </div>
+  </section>
+
+  <section id="s-hw">
+    <header tabindex="0" role="button" aria-expanded="true"><h2>Hardware</h2><span class="cuenta"></span>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg></header>
+    <div class="cuerpo">
+      <p class="nota">Estos datos los completa el relevamiento. Editalos a mano solo si el relevamiento falló o trajo algo incorrecto.</p>
+      <div class="fila"><div class="campo"><label for="so">Sistema operativo</label><input id="so" value="[SISTEMA OPERATIVO]" data-orig="[SISTEMA OPERATIVO]"></div>
+        <div class="campo"><label for="usuario">Usuario</label><input id="usuario" value="[USUARIO]" data-orig="[USUARIO]"></div></div>
+      <div class="fila tres" style="--cols:3">
+        <div class="campo"><label for="cpuf">Procesador</label><input id="cpuf" value="[FAMILIA]" data-orig="[FAMILIA]"></div>
+        <div class="campo"><label for="cpum">Modelo</label><input id="cpum" value="[MODELO]" data-orig="[MODELO]"></div>
+        <div class="campo"><label for="ghz">GHz</label><input id="ghz" inputmode="decimal" value="3,6" data-orig="3,6"></div></div>
+      <div class="fila"><div class="campo"><label for="placaf">Placa madre</label><input id="placaf" value="[FABRICANTE]" data-orig="[FABRICANTE]"></div>
+        <div class="campo"><label for="placam">Modelo placa</label><input id="placam" value="[MODELO PLACA]" data-orig="[MODELO PLACA]"></div></div>
+      <div class="campo"><label for="video">Video</label><input id="video" value="[VIDEO]" data-orig="[VIDEO]"></div>
+      <div class="ram">
+        <div class="ram-tit"><b>Memoria RAM</b><span id="ramTotal"></span></div>
+        <div class="campo"><label for="ramt">Tipo</label><select id="ramt" data-orig="DDR4"><option>DDR3</option><option selected>DDR4</option><option>DDR5</option></select></div>
+        <div id="modulos" style="display:flex;flex-direction:column;gap:8px"></div>
+        <button class="btn texto" type="button" id="agregarModulo" style="align-self:flex-start">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>Agregar módulo</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="s-discos">
+    <header tabindex="0" role="button" aria-expanded="true"><h2>Discos <span id="nDiscos" style="color:var(--muted);font-weight:400"></span></h2><span class="cuenta"></span>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg></header>
+    <div class="cuerpo">
+      <div id="discos" style="display:flex;flex-direction:column;gap:12px"></div>
+      <button class="btn texto" type="button" id="agregarDisco" style="align-self:flex-start">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>Agregar disco</button>
+    </div>
+  </section>
+</main>
+
+<div class="acciones"><div class="acciones-in">
+  <span class="cambios" id="cambios">Sin cambios</span>
+  <button class="btn" type="button" id="descartar" disabled>Descartar</button>
+  <button class="btn primario" type="button" id="guardar" disabled>Guardar</button>
+</div></div>
+<div class="aviso" id="aviso" hidden role="status"></div>
+
+<script>
+const discosIniciales=[
+  {marca:'[MARCA DISCO 1]',tec:'SSD',bus:'SATA',gb:'480'},
+  {marca:'[MARCA DISCO 2]',tec:'HDD',bus:'SATA',gb:'1000'}];
+const modulosIniciales=[{gb:'16',mhz:'2666'},{gb:'4',mhz:'2133'}];
+let modulos=[], modQuitados=0;
+function pintarModulos(){
+  $('#modulos').innerHTML=modulos.map((m,i)=>`
+   <div class="modulo${m.nuevo?' nuevo':''}" data-m="${i}">
+     <div class="campo"><label for="mod${m.k}">Módulo ${i+1} · GB</label>
+       <input id="mod${m.k}" inputmode="numeric" value="${m.gb}" data-orig="${m.nuevo?'':m.gb0}" ${m.nuevo?'placeholder="[GB]"':''}></div>
+     <div class="campo"><label for="mhz${m.k}">MHz</label>
+       <input id="mhz${m.k}" inputmode="numeric" value="${m.mhz}" data-orig="${m.nuevo?'':m.mhz0}" ${m.nuevo?'placeholder="[MHZ]"':''}></div>
+     <button class="icono" type="button" aria-label="Quitar módulo ${i+1}" data-quitarmod="${i}"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z"/></svg></button>
+   </div>`).join('');
+  contar();
+}
+function totalRam(){
+  const gb=modulos.reduce((s,m)=>s+(parseFloat(m.gb)||0),0);
+  $('#ramTotal').innerHTML=`Total <strong>${gb} GB</strong> · ${modulos.length} ${modulos.length===1?'módulo':'módulos'}`+
+    (modulos.length?` (${modulos.map(m=>(m.gb||'?')+' GB'+(m.mhz?' '+m.mhz+' MHz':'')).join(' + ')})`:'');
+}
+const BUSES=['NVMe','SATA','ATA','SAS','SCSI','RAID','otro'];
+let discos=[], quitados=0, sig=0;
+const $=s=>document.querySelector(s);
+
+function campo(id,label,val,orig,extra=''){return `<div class="campo"><label for="${id}">${label}</label><input id="${id}" value="${val}" data-orig="${orig}" ${extra}></div>`}
+function pintarDiscos(){
+  $('#discos').innerHTML=discos.map((d,i)=>`
+   <div class="disco${d.nuevo?' nuevo':''}" data-i="${i}">
+     <div class="tit"><b>${d.nuevo?'Disco nuevo':'Disco '+(i+1)}</b>
+       <button class="icono" type="button" aria-label="Quitar disco" data-quitar="${i}"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z"/></svg></button></div>
+     <div class="fila">${campo('dm'+d.k,'Marca',d.marca,d.nuevo?'':d.marca,d.nuevo?'placeholder="[MARCA]"':'')}
+       ${campo('dg'+d.k,'Capacidad GB',d.gb,d.nuevo?'':d.gb,'inputmode="numeric"'+(d.nuevo?' placeholder="[GB]"':''))}</div>
+     <div class="fila"><div class="campo"><label>Tecnología</label><div class="segmento" data-tec="${i}">
+         ${['SSD','HDD'].map(t=>`<button type="button" aria-pressed="${d.tec===t}">${t}</button>`).join('')}</div></div>
+       <div class="campo"><label for="db${d.k}">Conexión</label><select id="db${d.k}" data-orig="${d.nuevo?'':d.bus}">${BUSES.map(b=>`<option${b===d.bus?' selected':''}>${b}</option>`).join('')}</select></div></div>
+   </div>`).join('');
+  $('#nDiscos').textContent='· '+discos.length;
+  contar();
+}
+function contar(){
+  let total=0;
+  document.querySelectorAll('section').forEach(sec=>{
+    let n=0;
+    sec.querySelectorAll('[data-orig]').forEach(el=>{
+      const mod=el.dataset.orig!==el.value && !(el.closest('.disco.nuevo,.modulo.nuevo'));
+      el.closest('.campo').classList.toggle('mod',mod); if(mod)n++;
+    });
+    if(sec.id==='s-hw'){n+=modulos.filter(m=>m.nuevo).length+modQuitados}
+    if(sec.id==='s-discos'){n+=discos.filter(d=>d.nuevo).length+quitados+discos.filter(d=>!d.nuevo&&d.tec!==d.tec0).length}
+    sec.querySelector('.cuenta').textContent=n?(n===1?'1 cambio':n+' cambios'):'';
+    total+=n;
+  });
+  totalRam();
+  $('#ayudaNombre').hidden=$('#nombre').value===$('#nombre').dataset.orig;
+  $('#cambios').innerHTML=total?`<b>${total}</b> ${total===1?'cambio':'cambios'} sin guardar`:'Sin cambios';
+  $('#guardar').disabled=$('#descartar').disabled=!total;
+}
+function reiniciar(){
+  document.querySelectorAll('#s-ubic [data-orig],#s-hw [data-orig]').forEach(el=>el.value=el.dataset.orig);
+  modulos=modulosIniciales.map(m=>({gb:m.gb,gb0:m.gb,mhz:m.mhz,mhz0:m.mhz,k:sig++})); modQuitados=0; pintarModulos();
+  discos=discosIniciales.map(d=>({...d,tec0:d.tec,k:sig++})); quitados=0; pintarDiscos();
+}
+function aviso(txt,ms=2600){const a=$('#aviso');a.textContent=txt;a.hidden=false;clearTimeout(aviso.t);aviso.t=setTimeout(()=>a.hidden=true,ms)}
+
+document.addEventListener('input',e=>{
+  const m=e.target.closest('.modulo'); if(m){const x=modulos[m.dataset.m]; if(e.target.id.startsWith('mhz'))x.mhz=e.target.value; else x.gb=e.target.value}
+  const d=e.target.closest('.disco'); if(d){const x=discos[d.dataset.i],id=e.target.id;
+    if(id.startsWith('dm'))x.marca=e.target.value; if(id.startsWith('dg'))x.gb=e.target.value; if(id.startsWith('db'))x.bus=e.target.value}
+  contar()});
+document.addEventListener('change',contar);
+document.addEventListener('click',e=>{
+  const qm=e.target.closest('[data-quitarmod]'); if(qm){const i=+qm.dataset.quitarmod; if(!modulos[i].nuevo)modQuitados++; modulos.splice(i,1); pintarModulos(); aviso('Módulo quitado. Se borra al guardar.'); return}
+  const q=e.target.closest('[data-quitar]'); if(q){const i=+q.dataset.quitar; if(!discos[i].nuevo)quitados++; discos.splice(i,1); pintarDiscos(); aviso('Disco quitado. Se borra al guardar.'); return}
+  const s=e.target.closest('.segmento button'); if(s){const i=+s.parentElement.dataset.tec; discos[i].tec=s.textContent; pintarDiscos(); return}
+});
+document.querySelectorAll('section>header').forEach(h=>{const t=()=>{const s=h.parentElement;s.classList.toggle('cerrada');h.setAttribute('aria-expanded',!s.classList.contains('cerrada'))};
+  h.addEventListener('click',t);h.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();t()}})});
+$('#agregarModulo').onclick=()=>{modulos.push({gb:'',mhz:'',nuevo:true,k:sig++});pintarModulos();$('#mod'+(sig-1)).focus()};
+$('#agregarDisco').onclick=()=>{discos.push({marca:'',tec:'SSD',bus:'SATA',gb:'',nuevo:true,k:sig++});pintarDiscos();$('#dm'+(sig-1)).focus()};
+$('#descartar').onclick=()=>{reiniciar();aviso('Cambios descartados')};
+$('#guardar').onclick=()=>{
+  const b=$('#guardar');b.disabled=true;b.textContent='Guardando…';
+  setTimeout(()=>{
+    document.querySelectorAll('[data-orig]').forEach(el=>el.dataset.orig=el.value);
+    discosIniciales.splice(0,discosIniciales.length,...discos.map(({marca,tec,bus,gb})=>({marca,tec,bus,gb})));
+    modulosIniciales.splice(0,modulosIniciales.length,...modulos.map(m=>({gb:m.gb,mhz:m.mhz})));
+    $('.barra small').textContent=$('#nombre').value; b.textContent='Guardar'; reiniciar();
+    aviso('Equipo '+$('#nombre').value+' actualizado');
+  },700)};
+$('#relevar').onclick=()=>{
+  const b=$('#relevar');b.disabled=true;b.lastChild.textContent=' Relevando…';
+  $('#pildora').className='pildora warn';$('#pildora').textContent='En curso';$('#estadoTit').textContent='Consultando el equipo…';
+  setTimeout(()=>{b.disabled=false;b.lastChild.textContent=' Volver a relevar';
+    $('#pildora').className='pildora';$('#pildora').textContent='OK';$('#estadoTit').textContent='Relevada';
+    $('#estadoSub').textContent='Último relevamiento: recién';aviso('Hardware actualizado desde el equipo')},1400)};
+reiniciar();
+</script>

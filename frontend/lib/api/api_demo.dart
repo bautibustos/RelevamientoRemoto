@@ -26,10 +26,17 @@ http.Client clienteDemo({Duration demora = const Duration(milliseconds: 250)}) {
         'placa_fabricante': relevada ? '[PLACA MADRE]' : null,
         'video': relevada ? '[VIDEO]' : null,
         'ram_tipo': relevada ? '[DDR]' : null,
-        'ram_total_gb': relevada ? 8 : null,
+        'ram_total_gb': relevada ? 20 : null,
+        'ram_modulos': relevada ? 2 : 0,
+        'memorias': relevada
+            ? [
+                {'id': id * 10 + 1, 'capacidad_gb': 16, 'mhz': 2666},
+                {'id': id * 10 + 2, 'capacidad_gb': 4, 'mhz': 2133},
+              ]
+            : [],
         'discos': relevada
             ? [
-                {'id': id, 'modelo': '[MODELO DISCO]', 'tecnologia': 'SSD', 'bus': 'SATA', 'capacidad_gb': 480.0},
+                {'id': id, 'marca': '[MARCA DISCO]', 'tecnologia': 'SSD', 'bus': 'SATA', 'capacidad_gb': 480.0},
               ]
             : [],
       };
@@ -114,6 +121,47 @@ http.Client clienteDemo({Duration demora = const Duration(milliseconds: 250)}) {
       return encontrada.isEmpty ? json({'detail': 'No existe la PC $id'}, 404) : json(encontrada.first);
     }
 
+    final relevar = RegExp(r'^/pc/(\d+)/relevar$').firstMatch(ruta);
+    if (req.method == 'POST' && relevar != null) {
+      // relevamiento simulado: completa el hardware con datos de ejemplo
+      final id = int.parse(relevar.group(1)!);
+      final i = pcs.indexWhere((p) => p['id'] == id);
+      if (i < 0) return json({'detail': 'No existe la PC $id'}, 404);
+      final p = pcs[i];
+      final nueva = pc(id, p['nombre'] as String, (p['area'] as Map)['id'] as int, p['piso'] as String, 'ok',
+          relevada: true)
+        ..['red'] = p['red'];
+      pcs[i] = nueva;
+      return json({...nueva, 'relevamiento': {'ok': true, 'detalle': 'Hardware actualizado desde el equipo.'}});
+    }
+
+    if (req.method == 'PATCH' && detalle != null) {
+      final id = int.parse(detalle.group(1)!);
+      final p = pcs.where((p) => p['id'] == id).firstOrNull;
+      if (p == null) return json({'detail': 'No existe la PC $id'}, 404);
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      final nombre = body['nombre'] as String?;
+      if (nombre != null && pcs.any((o) => o['id'] != id && o['nombre'] == nombre)) {
+        return json({'detail': 'Ya existe la PC $nombre'}, 409);
+      }
+      for (final MapEntry(:key, :value) in body.entries) {
+        switch (key) {
+          case 'area_id':
+            p['area'] = areas.firstWhere((a) => a['id'] == value);
+          case 'memorias':
+            final lista = [for (final (i, m) in (value as List).indexed) {'id': id * 10 + i, ...(m as Map)}];
+            p['memorias'] = lista;
+            p['ram_modulos'] = lista.length;
+            p['ram_total_gb'] = lista.isEmpty ? null : lista.fold<num>(0, (s, m) => s + (m['capacidad_gb'] as num));
+          case 'discos':
+            p['discos'] = [for (final (i, d) in (value as List).indexed) {'id': id * 10 + i, ...(d as Map)}];
+          default:
+            p[key] = value;
+        }
+      }
+      return json(p);
+    }
+
     if (req.method == 'POST' && ruta == '/pc') {
       final body = jsonDecode(req.body) as Map<String, dynamic>;
       final nombre = (body['nombre'] as String).toUpperCase();
@@ -123,6 +171,7 @@ http.Client clienteDemo({Duration demora = const Duration(milliseconds: 250)}) {
       final responde = ultimo != null && ultimo.isEven;
       final nueva = pc(pcs.length + 1, nombre, body['area_id'] as int, body['piso'] as String,
           responde ? 'pendiente' : 'sin_respuesta');
+      nueva['red'] = body['red'];
       pcs.insert(0, nueva);
       return json({
         ...nueva,

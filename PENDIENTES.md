@@ -6,7 +6,11 @@ Mejoras a agregar al sistema de relevamiento (anotadas el 25/11/2026).
 Poder corregir una PC o un monitor después de cargarlos.
 - [x] API: `PATCH /api/v1/pc/{id}` (nombre, área, piso, red) y `PATCH /api/v1/monitores/{id}`
   (todos los datos; `"equipo_id": null` lo deja sin PC; `"interfaces"` reemplaza la lista).
-- [ ] App: formulario de edición, abriéndolo con los datos actuales desde el detalle del equipo.
+- [x] App: edición de PC desde el botón "Editar" del detalle (ubicación, hardware, módulos de RAM con
+  sus MHz y discos). Solo se envía lo que cambió; pide confirmación si se sale sin guardar. (26/11)
+- [ ] App: edición de monitores.
+- [x] Botón "Volver a relevar" en el detalle de la PC: `POST /api/v1/pc/{id}/relevar` hace ping y
+  consulta el hardware por WMI (de a un equipo por vez). (26/11)
   Caso típico de monitores: pasar un monitor de una PC a otra o dejarlo "sin PC".
 
 ## 2. Feedback al cargar una PC — hecho (ping)
@@ -34,3 +38,13 @@ Las credenciales de WMI ahora se leen del `.env` (`WMI_USUARIO`, `WMI_PASSWORD`;
   Corregido el 26/11: solo se quitan comillas si envuelven todo el valor. Probado con PC0001.
 - [ ] PC0026: el nombre no resuelve en la red; confirmar el nombre correcto.
 - [ ] Cambiar la contraseña que quedó en el historial de git (estaba escrita en `remote_check.py`).
+
+## 6. Nuevos pendientes (anotados el 26/11/2026)
+- [ ] Edición de monitores (mismo esquema que Editar PC, desde el detalle del monitor).
+- [ ] Estado de la PC según su uso: activa, en stock, masterizándose o baja completa
+  (distinto del estado del relevamiento: pendiente / ok / sin respuesta / error).
+- [ ] Botón para borrar equipos.
+- [ ] Red obligatoria al cargar y al editar una PC (hoy es opcional).
+- [ ] Al guardar una PC nueva: si responde al ping, relevar sus datos enseguida y avisar si el
+  relevamiento salió bien o falló.
+- [ ] Achicar el texto de las notificaciones.

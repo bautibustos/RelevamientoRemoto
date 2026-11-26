@@ -21,6 +21,7 @@ class _CargarPcScreenState extends State<CargarPcScreen> {
   final _form = GlobalKey<FormState>();
   final _piso = TextEditingController();
   final _nombre = TextEditingController();
+  final _red = TextEditingController();
   final _nombreFoco = FocusNode();
 
   Future<List<Area>>? _areas;
@@ -40,6 +41,7 @@ class _CargarPcScreenState extends State<CargarPcScreen> {
   void dispose() {
     _piso.dispose();
     _nombre.dispose();
+    _red.dispose();
     _nombreFoco.dispose();
     super.dispose();
   }
@@ -63,7 +65,12 @@ class _CargarPcScreenState extends State<CargarPcScreen> {
     setState(() => _guardando = true);
     try {
       final (_, ping) =
-          await ApiScope.of(context).crearPc(nombre: nombre, areaId: _area!.id, piso: _piso.text.trim());
+          await ApiScope.of(context).crearPc(
+        nombre: nombre,
+        areaId: _area!.id,
+        piso: _piso.text.trim(),
+        red: _red.text.trim().isEmpty ? null : _red.text.trim(),
+      );
       if (!mounted) return;
       if (ping == null || ping.responde) {
         mostrarAviso(
@@ -176,14 +183,13 @@ class _CargarPcScreenState extends State<CargarPcScreen> {
                   errorText: _errorNombre,
                 ),
                 textCapitalization: TextCapitalization.characters,
-                textInputAction: TextInputAction.done,
+                textInputAction: TextInputAction.next,
                 autocorrect: false,
                 maxLength: 50,
                 buildCounter: _sinContador,
                 onChanged: (_) {
                   if (_errorNombre != null) setState(() => _errorNombre = null);
                 },
-                onFieldSubmitted: (_) => _guardar(),
                 validator: (v) {
                   final t = (v ?? '').trim();
                   if (t.isEmpty) return 'Ingresá el nombre del equipo.';
@@ -192,6 +198,17 @@ class _CargarPcScreenState extends State<CargarPcScreen> {
                   }
                   return null;
                 },
+              ),
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: _red,
+                enabled: !_guardando,
+                decoration: const InputDecoration(labelText: 'Red (opcional)', hintText: '[RED]'),
+                textInputAction: TextInputAction.done,
+                autocorrect: false,
+                maxLength: 50,
+                buildCounter: _sinContador,
+                onFieldSubmitted: (_) => _guardar(),
               ),
               if (_errorGeneral != null)
                 Padding(

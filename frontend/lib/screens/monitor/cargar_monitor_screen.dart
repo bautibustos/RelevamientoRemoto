@@ -142,14 +142,14 @@ class _CargarMonitorScreenState extends State<CargarMonitorScreen> {
           body: SafeArea(
             child: switch (snapshot) {
               _ when snapshot.hasError => EstadoCarga.error(
-                  snapshot.error.toString(),
-                  onReintentar: () {
-                    final nuevos = _cargarCatalogos();
-                    setState(() {
-                      _catalogos = nuevos;
-                    });
-                  },
-                ),
+                snapshot.error.toString(),
+                onReintentar: () {
+                  final nuevos = _cargarCatalogos();
+                  setState(() {
+                    _catalogos = nuevos;
+                  });
+                },
+              ),
               _ when !listo => const EstadoCarga.cargando('Cargando datos…'),
               _ => _formulario(context, snapshot.data!.$1, snapshot.data!.$2),
             },
@@ -168,26 +168,34 @@ class _CargarMonitorScreenState extends State<CargarMonitorScreen> {
       ),
       child: SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _guardando ? null : () => Navigator.of(context).pop(),
-                  child: const Text('Cancelar'),
-                ),
+        // en pantallas anchas los botones quedan alineados con la columna del formulario
+        child: Align(
+          alignment: Alignment.topCenter,
+          heightFactor: 1,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _guardando ? null : () => Navigator.of(context).pop(),
+                      child: const Text('Cancelar'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _guardando ? null : _guardar,
+                      child: _guardando
+                          ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
+                          : const Text('Guardar'),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: _guardando ? null : _guardar,
-                  child: _guardando
-                      ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
-                      : const Text('Guardar'),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -220,7 +228,10 @@ class _CargarMonitorScreenState extends State<CargarMonitorScreen> {
                       decoration: const InputDecoration(labelText: 'Área', hintText: '[ÁREA]'),
                       items: [
                         for (final a in areas)
-                          DropdownMenuItem(value: a, child: Text(a.nombre, overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(
+                            value: a,
+                            child: Text(a.nombre, overflow: TextOverflow.ellipsis),
+                          ),
                       ],
                       onChanged: _guardando ? null : (a) => setState(() => _area = a),
                       validator: (a) => a == null ? 'Elegí un área.' : null,
@@ -289,7 +300,10 @@ class _CargarMonitorScreenState extends State<CargarMonitorScreen> {
                 enabled: !_guardando,
                 decoration: const InputDecoration(labelText: 'Pulgadas', hintText: '[PULGADAS]', suffixText: '"'),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')), LengthLimitingTextInputFormatter(5)],
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                  LengthLimitingTextInputFormatter(5),
+                ],
                 onChanged: (_) => setState(() {}),
                 validator: (_) {
                   final p = _pulgadasValor;
@@ -367,10 +381,7 @@ class _CargarMonitorScreenState extends State<CargarMonitorScreen> {
               TextFormField(
                 controller: _observaciones,
                 enabled: !_guardando,
-                decoration: const InputDecoration(
-                  labelText: 'Observaciones (opcional)',
-                  hintText: '[OBSERVACIONES]',
-                ),
+                decoration: const InputDecoration(labelText: 'Observaciones (opcional)', hintText: '[OBSERVACIONES]'),
                 minLines: 2,
                 maxLines: 4,
                 inputFormatters: [LengthLimitingTextInputFormatter(500)],
@@ -378,8 +389,10 @@ class _CargarMonitorScreenState extends State<CargarMonitorScreen> {
               if (_errorGeneral != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 16),
-                  child: Text(_errorGeneral!,
-                      style: tema.textTheme.bodyMedium?.copyWith(color: tema.colorScheme.error)),
+                  child: Text(
+                    _errorGeneral!,
+                    style: tema.textTheme.bodyMedium?.copyWith(color: tema.colorScheme.error),
+                  ),
                 ),
             ],
           ),
@@ -536,7 +549,9 @@ class _CampoEquipoState extends State<_CampoEquipo> {
     final completer = Completer<List<Pc>>();
     final api = ApiScope.of(context);
     _espera = Timer(const Duration(milliseconds: 250), () {
-      api.pcs(nombre: texto).then((l) => completer.complete(l.take(8).toList()), onError: (_) => completer.complete(const []));
+      api
+          .pcs(nombre: texto)
+          .then((l) => completer.complete(l.take(8).toList()), onError: (_) => completer.complete(const []));
     });
     return completer.future;
   }
@@ -581,7 +596,9 @@ class _CampoEquipoState extends State<_CampoEquipo> {
                   ListTile(
                     minTileHeight: 52,
                     title: Text(pc.nombre, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text([pc.area?.nombre, if (pc.piso != null) 'Piso ${pc.piso}'].whereType<String>().join(' · ')),
+                    subtitle: Text(
+                      [pc.area?.nombre, if (pc.piso != null) 'Piso ${pc.piso}'].whereType<String>().join(' · '),
+                    ),
                     onTap: () => alElegir(pc),
                   ),
               ],

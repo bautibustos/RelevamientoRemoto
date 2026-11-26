@@ -53,16 +53,36 @@ class ApiClient {
   Future<Pc> pc(int id) async => Pc.fromJson(await _get('/pc/$id') as Map<String, dynamic>);
 
   /// Da de alta la PC. La API le hace un ping y devuelve el resultado junto con la PC.
-  Future<(Pc, ResultadoPing?)> crearPc({required String nombre, required int areaId, required String piso}) async {
+  Future<(Pc, ResultadoPing?)> crearPc(
+      {required String nombre, required int areaId, required String piso, String? red}) async {
     final datos = await _enviar(
       () => _http.post(
         _uri('/pc'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'nombre': nombre, 'area_id': areaId, 'piso': piso}),
+        body: jsonEncode({'nombre': nombre, 'area_id': areaId, 'piso': piso, 'red': ?red}),
       ),
     ) as Map<String, dynamic>;
     final ping = datos['ping'];
     return (Pc.fromJson(datos), ping is Map<String, dynamic> ? ResultadoPing.fromJson(ping) : null);
+  }
+
+  /// Edita la PC enviando solo los campos cambiados (ver PATCH /pc/{id}).
+  /// "memorias" y "discos", si se envían, reemplazan la lista completa. Devuelve la PC con su detalle.
+  Future<Pc> editarPc(int id, Map<String, dynamic> cambios) async {
+    final datos = await _enviar(
+      () => _http.patch(
+        _uri('/pc/$id'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(cambios),
+      ),
+    );
+    return Pc.fromJson(datos as Map<String, dynamic>);
+  }
+
+  /// Vuelve a consultar el hardware del equipo por WMI. Puede tardar hasta un minuto.
+  Future<(Pc, ResultadoRelevamiento)> relevarPc(int id) async {
+    final datos = await _enviar(() => _http.post(_uri('/pc/$id/relevar'))) as Map<String, dynamic>;
+    return (Pc.fromJson(datos), ResultadoRelevamiento.fromJson(datos['relevamiento'] as Map<String, dynamic>));
   }
 
   // ------------------------------------------------------------------ monitores

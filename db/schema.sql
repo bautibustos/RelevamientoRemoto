@@ -40,9 +40,7 @@ CREATE TABLE IF NOT EXISTS equipos (
 
     -- memoria
     ram_tipo            TEXT CHECK (ram_tipo IN ('DDR1','DDR2','DDR3','DDR4','DDR5')),
-    ram_total_gb        INTEGER,
-    ram_mhz             INTEGER,
-    ram_modulos         INTEGER,
+                                                               -- módulos, MHz y total: tabla memorias
 
     -- control
     estado              TEXT NOT NULL DEFAULT 'pendiente'
@@ -60,8 +58,7 @@ CREATE INDEX IF NOT EXISTS idx_equipos_area ON equipos(area_id);
 CREATE TABLE IF NOT EXISTS discos (
     id              INTEGER PRIMARY KEY,
     equipo_id       INTEGER NOT NULL REFERENCES equipos(id) ON DELETE CASCADE,
-    modelo          TEXT,                                      -- MSFT_PhysicalDisk.Model
-    numero_serie    TEXT,                                      -- MSFT_PhysicalDisk.SerialNumber
+    marca           TEXT,                                      -- se deduce de MSFT_PhysicalDisk.Model
     tecnologia      TEXT NOT NULL DEFAULT 'desconocido'
                     CHECK (tecnologia IN ('SSD','HDD','desconocido')),
     bus             TEXT CHECK (bus IN ('NVMe','SATA','ATA','SAS','SCSI','RAID','otro')),
@@ -69,6 +66,19 @@ CREATE TABLE IF NOT EXISTS discos (
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_discos_equipo ON discos(equipo_id);
+
+-- ============================================================
+-- Módulos de memoria RAM (1 PC -> N módulos, ej. 16 GB + 4 GB).
+-- El total de la PC es la suma de sus módulos.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS memorias (
+    id              INTEGER PRIMARY KEY,
+    equipo_id       INTEGER NOT NULL REFERENCES equipos(id) ON DELETE CASCADE,
+    capacidad_gb    REAL NOT NULL CHECK (capacidad_gb > 0),   -- Win32_PhysicalMemory.Capacity
+    mhz             INTEGER CHECK (mhz > 0)                    -- Win32_PhysicalMemory.Speed
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_memorias_equipo ON memorias(equipo_id);
 
 -- ============================================================
 -- Monitores

@@ -39,17 +39,19 @@ CONSULTA = """
         e.placa_modelo                                  AS "Mother-Modelo",
         e.video                                         AS "Video",
         e.ram_tipo                                      AS "RAM-Tecnologia",
-        e.ram_total_gb                                  AS "RAM-Total",
-        e.ram_mhz                                       AS "RAM-Mhz",
-        COALESCE(json_extract(e.datos_crudos, '$.memoria.capacidad'),
-                 e.ram_modulos)                         AS "RAM-Cant. Modulos",
+        (SELECT SUM(capacidad_gb) FROM memorias m
+          WHERE m.equipo_id = e.id)                     AS "RAM-Total",
+        (SELECT GROUP_CONCAT(COALESCE(mhz, '?'), ' + ') FROM
+           (SELECT mhz FROM memorias m WHERE m.equipo_id = e.id ORDER BY m.id)) AS "RAM-Mhz",
+        (SELECT GROUP_CONCAT(printf('%g', capacidad_gb), ' + ') FROM
+           (SELECT capacidad_gb FROM memorias m WHERE m.equipo_id = e.id ORDER BY m.id)) AS "RAM-Cant. Modulos",
         (SELECT ROUND(SUM(capacidad_gb), 2) FROM discos d
           WHERE d.equipo_id = e.id AND d.tecnologia = 'SSD')   AS "SSD",
-        (SELECT GROUP_CONCAT(modelo, ' / ') FROM discos d
+        (SELECT GROUP_CONCAT(marca, ' / ') FROM discos d
           WHERE d.equipo_id = e.id AND d.tecnologia = 'SSD')   AS "Marca-SSD",
         (SELECT ROUND(SUM(capacidad_gb), 2) FROM discos d
           WHERE d.equipo_id = e.id AND d.tecnologia = 'HDD')   AS "HDD",
-        (SELECT GROUP_CONCAT(modelo, ' / ') FROM discos d
+        (SELECT GROUP_CONCAT(marca, ' / ') FROM discos d
           WHERE d.equipo_id = e.id AND d.tecnologia = 'HDD')   AS "Marca-HDD",
         e.red                                           AS "RED",
         e.usuario                                       AS "Usuario",

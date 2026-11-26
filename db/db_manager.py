@@ -10,6 +10,7 @@ import re
 from datetime import datetime
 
 from . import crear_db
+from .marcas import marca_disco
 
 # Se puede cambiar (por ejemplo en pruebas) para apuntar a otra base.
 RUTA_DB = crear_db.RUTA_DB
@@ -90,9 +91,9 @@ def guardar_relevamiento(nombre, piso, area, red, info):
                     nombre, piso, area_id, red, so, usuario,
                     cpu_nombre, cpu_familia, cpu_modelo, cpu_ghz,
                     placa_fabricante, placa_modelo, video,
-                    ram_tipo, ram_total_gb, ram_mhz, ram_modulos,
+                    ram_tipo,
                     estado, ultimo_error, fecha_relevamiento, datos_crudos
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'ok',NULL,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'ok',NULL,?,?)
                 ON CONFLICT(nombre) DO UPDATE SET
                     piso=excluded.piso, area_id=excluded.area_id, red=excluded.red,
                     so=excluded.so, usuario=excluded.usuario,
@@ -100,8 +101,7 @@ def guardar_relevamiento(nombre, piso, area, red, info):
                     cpu_modelo=excluded.cpu_modelo, cpu_ghz=excluded.cpu_ghz,
                     placa_fabricante=excluded.placa_fabricante, placa_modelo=excluded.placa_modelo,
                     video=excluded.video,
-                    ram_tipo=excluded.ram_tipo, ram_total_gb=excluded.ram_total_gb,
-                    ram_mhz=excluded.ram_mhz, ram_modulos=excluded.ram_modulos,
+                    ram_tipo=excluded.ram_tipo,
                     estado='ok', ultimo_error=NULL,
                     fecha_relevamiento=excluded.fecha_relevamiento,
                     datos_crudos=excluded.datos_crudos
@@ -110,24 +110,35 @@ def guardar_relevamiento(nombre, piso, area, red, info):
                     nombre, piso, area_id, red, info.get('so'), info.get('Usuario'),
                     cpu_nombre, cpu_familia, cpu_modelo, cpu_ghz,
                     placa[0], placa[1], info.get('video'),
-                    memoria.get('ddr'), _entero(memoria.get('total')),
-                    _entero(memoria.get('mhz')), len(modulos) or None,
+                    memoria.get('ddr'),
                     _ahora(), json.dumps(info, ensure_ascii=False, default=str),
                 ),
             )
             equipo_id = con.execute('SELECT id FROM equipos WHERE nombre = ?', (nombre,)).fetchone()[0]
 
-            # los discos se reemplazan por los del último relevamiento
+            # módulos de RAM y discos se reemplazan por los del último relevamiento
+            con.execute('DELETE FROM memorias WHERE equipo_id = ?', (equipo_id,))
+            # relevamientos anteriores no traen mhz_modulos: se usa el MHz general para todos
+            mhz_modulos = memoria.get('mhz_modulos') or [memoria.get('mhz')] * len(modulos)
+            for capacidad, mhz in zip(modulos, mhz_modulos):
+                try:
+                    capacidad = float(capacidad)
+                except (TypeError, ValueError):
+                    continue
+                mhz = _entero(mhz)
+                if capacidad > 0:
+                    con.execute('INSERT INTO memorias (equipo_id, capacidad_gb, mhz) VALUES (?,?,?)',
+                                (equipo_id, capacidad, mhz if mhz and mhz > 0 else None))
+
             con.execute('DELETE FROM discos WHERE equipo_id = ?', (equipo_id,))
             for disco in info.get('disco') or []:
                 if disco.get('bus') == 'USB':
                     continue
                 tecnologia = disco.get('tecnologia')
                 con.execute(
-                    'INSERT INTO discos (equipo_id, modelo, numero_serie, tecnologia, bus, capacidad_gb)'
-                    ' VALUES (?,?,?,?,?,?)',
+                    'INSERT INTO discos (equipo_id, marca, tecnologia, bus, capacidad_gb) VALUES (?,?,?,?,?)',
                     (
-                        equipo_id, disco.get('marca'), disco.get('serie'),
+                        equipo_id, marca_disco(disco.get('marca')),
                         tecnologia if tecnologia in ('SSD', 'HDD') else 'desconocido',
                         disco.get('bus'), disco.get('capacidad'),
                     ),

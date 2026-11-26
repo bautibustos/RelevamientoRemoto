@@ -32,6 +32,7 @@ equipo = {
     'placa':None,
     'memoria':{'ddr':None,
                'capacidad':[],
+               'mhz_modulos':[],  # MHz de cada módulo, en el mismo orden que capacidad
                'mhz':None,
                'total':None
                },
@@ -49,6 +50,7 @@ def cleaner():
     'placa':None,
     'memoria':{'ddr':None,
                'capacidad':[],
+               'mhz_modulos':[],  # MHz de cada módulo, en el mismo orden que capacidad
                'mhz':None,
                'total':None
                },
@@ -87,13 +89,14 @@ def casi_completo(identificador):
     for memory in c.Win32_PhysicalMemory():
         #print(memory)
         # potencia 1024 a la 3 para calcular la cantidad de GBs ya que se retornan en kbs
-        cantidad_gb=round(int(memory.Capacity)/(1024**3))
+        cantidad_gb=round(int(memory.Capacity)/(1024**3), 1)
         capacidad_ram = cantidad_gb + capacidad_ram
         #print(ddr_map[memory.SMBIOSMemoryType],
         #    memory.Speed, "capacidad del modulo: ", round(int(memory.Capacity)/(1024**3)))
 
         # esto guarda la cantidad de modulos .
         equipo['memoria']['capacidad'].append(cantidad_gb)
+        equipo['memoria']['mhz_modulos'].append(memory.Speed)
 
     """
     Esto sirve para ver los slots de RAM. No es confiable 
