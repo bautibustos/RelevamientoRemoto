@@ -50,6 +50,32 @@ class MonitorCrear(BaseModel):
         return self
 
 
+class MonitorEditar(BaseModel):
+    """Solo se modifican los campos enviados. Para desconectarlo de la PC se envía "equipo_id": null.
+    Si se envía "interfaces", reemplaza la lista completa."""
+    marca: str = Field(None, min_length=1, max_length=60)
+    modelo: str = Field(None, min_length=1, max_length=80)
+    numero_serie: str | None = Field(None, max_length=80)
+    pulgadas: float = Field(None, gt=0, le=100)
+    interfaces: list[InterfazCantidad] = Field(None)
+    area_id: int = Field(None, gt=0)
+    piso: str | None = Field(None, max_length=20)
+    equipo_id: int | None = Field(None, gt=0)
+    observaciones: str | None = Field(None, max_length=500)
+
+    @field_validator('marca', 'modelo', 'numero_serie', 'piso', 'observaciones', mode='before')
+    @classmethod
+    def _texto(cls, v):
+        return limpiar(v)
+
+    @model_validator(mode='after')
+    def _interfaces_unicas(self):
+        nombres = [i.nombre.lower() for i in self.interfaces or []]
+        if len(nombres) != len(set(nombres)):
+            raise ValueError('Hay interfaces repetidas: usá "cantidad" en lugar de repetirlas.')
+        return self
+
+
 class EquipoRef(BaseModel):
     id: int
     nombre: str
@@ -145,21 +171,28 @@ def ver_monitor(monitor_id: int, con: sqlite3.Connection = Depends(get_db)):
     return monitores[0]
 
 
-@router.post('', response_model=Monitor, status_code=201, summary='Cargar un monitor')
-def crear_monitor(datos: MonitorCrear, con: sqlite3.Connection = Depends(get_db)):
-    verificar_area(con, datos.area_id)
-    if datos.equipo_id is not None and not con.execute(
-        'SELECT 1 FROM equipos WHERE id = ?', (datos.equipo_id,)
-    ).fetchone():
-        raise HTTPException(422, f'No existe la PC {datos.equipo_id}. Consultá las válidas en GET /api/v1/pc.')
+def _verificar_equipo(con, equipo_id):
+    if equipo_id is not None and not con.execute('SELECT 1 FROM equipos WHERE id = ?', (equipo_id,)).fetchone():
+        raise HTTPException(422, f'No existe la PC {equipo_id}. Consultá las válidas en GET /api/v1/pc.')
 
+
+def _resolver_interfaces(con, lista):
+    """[(interfaz_id, cantidad)] o 422 si alguna no existe en el catálogo."""
     interfaces = []
-    for interfaz in datos.interfaces:
+    for interfaz in lista:
         fila = con.execute('SELECT id FROM interfaces_video WHERE nombre = ?', (interfaz.nombre,)).fetchone()
         if not fila:
             validas = ', '.join(r[0] for r in con.execute('SELECT nombre FROM interfaces_video ORDER BY id'))
             raise HTTPException(422, f'Interfaz desconocida: {interfaz.nombre}. Válidas: {validas}')
         interfaces.append((fila['id'], interfaz.cantidad))
+    return interfaces
+
+
+@router.post('', response_model=Monitor, status_code=201, summary='Cargar un monitor')
+def crear_monitor(datos: MonitorCrear, con: sqlite3.Connection = Depends(get_db)):
+    verificar_area(con, datos.area_id)
+    _verificar_equipo(con, datos.equipo_id)
+    interfaces = _resolver_interfaces(con, datos.interfaces)
 
     with con:  # todo o nada: si algo falla no queda el monitor a medias
         try:
@@ -176,3 +209,36 @@ def crear_monitor(datos: MonitorCrear, con: sqlite3.Connection = Depends(get_db)
             [(cur.lastrowid, i, c) for i, c in interfaces],
         )
     return _leer(con, 'WHERE m.id = ?', (cur.lastrowid,))[0]
+
+
+@router.patch('/{monitor_id}', response_model=Monitor, summary='Editar un monitor',
+              description='Solo cambia los campos enviados. "equipo_id": null lo deja sin PC; '
+                          '"interfaces" reemplaza la lista completa.')
+def editar_monitor(monitor_id: int, datos: MonitorEditar, con: sqlite3.Connection = Depends(get_db)):
+    if not con.execute('SELECT 1 FROM monitores WHERE id = ?', (monitor_id,)).fetchone():
+        raise HTTPException(404, f'No existe el monitor {monitor_id}')
+    cambios = datos.model_dump(exclude_unset=True)
+    for campo in ('marca', 'modelo', 'pulgadas', 'area_id', 'interfaces'):
+        if campo in cambios and cambios[campo] is None:
+            raise HTTPException(422, f'El campo {campo} no puede quedar vacío.')
+    if 'area_id' in cambios:
+        verificar_area(con, cambios['area_id'])
+    if 'equipo_id' in cambios:
+        _verificar_equipo(con, cambios['equipo_id'])
+    interfaces = _resolver_interfaces(con, datos.interfaces) if 'interfaces' in cambios else None
+    cambios.pop('interfaces', None)
+
+    with con:  # todo o nada
+        if cambios:
+            columnas = ', '.join(f'{c} = ?' for c in cambios)
+            try:
+                con.execute(f'UPDATE monitores SET {columnas} WHERE id = ?', (*cambios.values(), monitor_id))
+            except sqlite3.IntegrityError:
+                raise HTTPException(409, f'Ya existe un monitor con número de serie {cambios.get("numero_serie")}')
+        if interfaces is not None:
+            con.execute('DELETE FROM monitor_interfaces WHERE monitor_id = ?', (monitor_id,))
+            con.executemany(
+                'INSERT INTO monitor_interfaces (monitor_id, interfaz_id, cantidad) VALUES (?,?,?)',
+                [(monitor_id, i, c) for i, c in interfaces],
+            )
+    return _leer(con, 'WHERE m.id = ?', (monitor_id,))[0]

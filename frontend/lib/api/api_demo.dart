@@ -118,9 +118,16 @@ http.Client clienteDemo({Duration demora = const Duration(milliseconds: 250)}) {
       final body = jsonDecode(req.body) as Map<String, dynamic>;
       final nombre = (body['nombre'] as String).toUpperCase();
       if (pcs.any((p) => p['nombre'] == nombre)) return json({'detail': 'Ya existe la PC $nombre'}, 409);
-      final nueva = pc(pcs.length + 1, nombre, body['area_id'] as int, body['piso'] as String, 'pendiente');
+      // ping simulado: responde si el nombre termina en un número par (ej. EQUIPO-06); si no, no responde
+      final ultimo = int.tryParse(nombre.substring(nombre.length - 1));
+      final responde = ultimo != null && ultimo.isEven;
+      final nueva = pc(pcs.length + 1, nombre, body['area_id'] as int, body['piso'] as String,
+          responde ? 'pendiente' : 'sin_respuesta');
       pcs.insert(0, nueva);
-      return json(nueva, 201);
+      return json({
+        ...nueva,
+        'ping': {'responde': responde, 'detalle': responde ? 'Respondió al ping.' : 'No responde al ping.'},
+      }, 201);
     }
 
     if (req.method == 'GET' && ruta == '/interfaces') {

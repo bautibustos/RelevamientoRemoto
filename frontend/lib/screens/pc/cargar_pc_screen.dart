@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../api/api_client.dart';
 import '../../api/api_scope.dart';
 import '../../models/area.dart';
+import '../../widgets/aviso.dart';
 import '../../widgets/estado_carga.dart';
 
 /// Alta de una PC: área, piso y nombre del equipo.
@@ -14,6 +15,9 @@ class CargarPcScreen extends StatefulWidget {
 }
 
 class _CargarPcScreenState extends State<CargarPcScreen> {
+  /// Mismo criterio que la API: nombre de red válido para hacer ping.
+  static final _nombreValido = RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]*$');
+
   final _form = GlobalKey<FormState>();
   final _piso = TextEditingController();
   final _nombre = TextEditingController();
@@ -58,11 +62,23 @@ class _CargarPcScreenState extends State<CargarPcScreen> {
     final nombre = _nombre.text.trim().toUpperCase();
     setState(() => _guardando = true);
     try {
-      await ApiScope.of(context).crearPc(nombre: nombre, areaId: _area!.id, piso: _piso.text.trim());
+      final (_, ping) =
+          await ApiScope.of(context).crearPc(nombre: nombre, areaId: _area!.id, piso: _piso.text.trim());
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Equipo $nombre guardado.')));
+      if (ping == null || ping.responde) {
+        mostrarAviso(
+          context,
+          titulo: 'Equipo $nombre guardado',
+          detalle: ping == null ? null : 'Respondió al ping: está en red y listo para relevar.',
+        );
+      } else {
+        mostrarAviso(
+          context,
+          tipo: TipoAviso.alerta,
+          titulo: 'Equipo $nombre guardado, sin respuesta',
+          detalle: 'No respondió al ping. Quedó como "Sin respuesta": revisá que esté encendido y el nombre.',
+        );
+      }
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -168,7 +184,14 @@ class _CargarPcScreenState extends State<CargarPcScreen> {
                   if (_errorNombre != null) setState(() => _errorNombre = null);
                 },
                 onFieldSubmitted: (_) => _guardar(),
-                validator: (v) => (v ?? '').trim().isEmpty ? 'Ingresá el nombre del equipo.' : null,
+                validator: (v) {
+                  final t = (v ?? '').trim();
+                  if (t.isEmpty) return 'Ingresá el nombre del equipo.';
+                  if (!_nombreValido.hasMatch(t)) {
+                    return 'Usá solo letras, números, punto, guion o guion bajo (sin espacios).';
+                  }
+                  return null;
+                },
               ),
               if (_errorGeneral != null)
                 Padding(
@@ -177,6 +200,15 @@ class _CargarPcScreenState extends State<CargarPcScreen> {
                       style: tema.textTheme.bodyMedium?.copyWith(color: tema.colorScheme.error)),
                 ),
               const SizedBox(height: 28),
+              if (_guardando)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'Guardando y verificando la conexión con el equipo…',
+                    textAlign: TextAlign.center,
+                    style: tema.textTheme.bodyMedium?.copyWith(color: tema.colorScheme.onSurfaceVariant),
+                  ),
+                ),
               Row(
                 children: [
                   Expanded(

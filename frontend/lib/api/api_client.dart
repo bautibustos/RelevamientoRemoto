@@ -52,15 +52,17 @@ class ApiClient {
 
   Future<Pc> pc(int id) async => Pc.fromJson(await _get('/pc/$id') as Map<String, dynamic>);
 
-  Future<Pc> crearPc({required String nombre, required int areaId, required String piso}) async {
+  /// Da de alta la PC. La API le hace un ping y devuelve el resultado junto con la PC.
+  Future<(Pc, ResultadoPing?)> crearPc({required String nombre, required int areaId, required String piso}) async {
     final datos = await _enviar(
       () => _http.post(
         _uri('/pc'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'nombre': nombre, 'area_id': areaId, 'piso': piso}),
       ),
-    );
-    return Pc.fromJson(datos as Map<String, dynamic>);
+    ) as Map<String, dynamic>;
+    final ping = datos['ping'];
+    return (Pc.fromJson(datos), ping is Map<String, dynamic> ? ResultadoPing.fromJson(ping) : null);
   }
 
   // ------------------------------------------------------------------ monitores

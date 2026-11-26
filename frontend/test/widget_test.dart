@@ -31,12 +31,13 @@ class ApiFalsa {
       if (pcs.any((p) => p['nombre'] == body['nombre'])) {
         return _json({'detail': 'Ya existe la PC ${body['nombre']}'}, 409);
       }
+      final responde = !(body['nombre'] as String).contains('CAIDO'); // ping simulado
       final nueva = {
         'id': pcs.length + 1, 'nombre': body['nombre'], 'piso': body['piso'],
-        'area': {'id': 1, 'nombre': 'AREA 1'}, 'estado': 'pendiente',
+        'area': {'id': 1, 'nombre': 'AREA 1'}, 'estado': responde ? 'pendiente' : 'sin_respuesta',
       };
       pcs.add(nueva);
-      return _json(nueva, 201);
+      return _json({...nueva, 'ping': {'responde': responde, 'detalle': '-'}}, 201);
     }
     return _json({'detail': 'no encontrado'}, 404);
   });
@@ -117,12 +118,35 @@ void main() {
     await _completar(tester, nombre: 'equipo-nuevo');
     await tester.tap(find.text('Guardar'));
     await tester.pumpAndSettle();
-    expect(find.text('Equipo EQUIPO-NUEVO guardado.'), findsOneWidget);
+    expect(find.text('Equipo EQUIPO-NUEVO guardado'), findsOneWidget);
+    expect(find.text('Respondió al ping: está en red y listo para relevar.'), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle), findsOneWidget);
     expect(find.widgetWithText(AppBar, 'PC'), findsOneWidget);
     expect(find.text('EQUIPO-NUEVO'), findsOneWidget); // la lista se actualizó
     expect(find.text('2 equipos'), findsOneWidget);
     final post = api.pedidos.singleWhere((r) => r.method == 'POST');
     expect(jsonDecode(post.body), {'nombre': 'EQUIPO-NUEVO', 'area_id': 1, 'piso': '2'});
+  });
+
+  testWidgets('Si la PC no responde al ping, avisa con una alerta', (tester) async {
+    await _abrirApp(tester);
+    await _irACargar(tester);
+    await _completar(tester, nombre: 'equipo-caido');
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Equipo EQUIPO-CAIDO guardado, sin respuesta'), findsOneWidget);
+    expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+    expect(find.widgetWithText(AppBar, 'PC'), findsOneWidget); // igual vuelve a la búsqueda
+  });
+
+  testWidgets('El nombre no acepta espacios ni caracteres raros', (tester) async {
+    final api = await _abrirApp(tester);
+    await _irACargar(tester);
+    await _completar(tester, nombre: 'ws 123');
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Usá solo letras, números, punto, guion o guion bajo (sin espacios).'), findsOneWidget);
+    expect(api.pedidos.where((r) => r.method == 'POST'), isEmpty);
   });
 
   testWidgets('La búsqueda lista los equipos y filtra por nombre', (tester) async {

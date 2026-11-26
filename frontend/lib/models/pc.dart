@@ -16,6 +16,17 @@ enum EstadoPc {
       EstadoPc.values.firstWhere((e) => e.valor == valor, orElse: () => EstadoPc.pendiente);
 }
 
+/// Resultado del ping que la API hace al dar de alta una PC.
+class ResultadoPing {
+  const ResultadoPing({required this.responde, required this.detalle});
+
+  final bool responde;
+  final String detalle;
+
+  factory ResultadoPing.fromJson(Map<String, dynamic> json) =>
+      ResultadoPing(responde: json['responde'] as bool, detalle: json['detalle'] as String? ?? '');
+}
+
 class Disco {
   const Disco({this.modelo, required this.tecnologia, this.bus, this.capacidadGb});
 

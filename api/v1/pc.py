@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from api.database import get_db
+from api.red import NOMBRE_VALIDO, hacer_ping
 from api.v1.comunes import Area, area_o_none, limpiar, verificar_area
 
 router = APIRouter(prefix='/pc', tags=['PC'])
@@ -14,6 +15,16 @@ Estado = Literal['pendiente', 'ok', 'sin_respuesta', 'error']
 
 
 # ---------------------------------------------------------------- modelos
+def _validar_nombre(v):
+    v = limpiar(v)
+    if isinstance(v, str):
+        v = v.upper()
+        if not NOMBRE_VALIDO.match(v):
+            raise ValueError('El nombre solo puede tener letras, números, punto, guion y guion bajo, '
+                             'y no puede empezar con guion.')
+    return v
+
+
 class PCCrear(BaseModel):
     nombre: str = Field(min_length=1, max_length=50, examples=['PC0002'])
     area_id: int = Field(gt=0, examples=[1], description='Id del área (GET /api/v1/areas).')
@@ -22,13 +33,35 @@ class PCCrear(BaseModel):
     @field_validator('nombre', mode='before')
     @classmethod
     def _nombre(cls, v):
-        v = limpiar(v)
-        return v.upper() if isinstance(v, str) else v
+        return _validar_nombre(v)
 
     @field_validator('piso', mode='before')
     @classmethod
     def _piso(cls, v):
         return limpiar(v)
+
+
+class PCEditar(BaseModel):
+    """Solo se modifican los campos enviados. El hardware no se edita: lo completa el relevamiento."""
+    nombre: str = Field(None, min_length=1, max_length=50)
+    area_id: int = Field(None, gt=0)
+    piso: str = Field(None, min_length=1, max_length=20)
+    red: str | None = Field(None, max_length=50)
+
+    @field_validator('nombre', mode='before')
+    @classmethod
+    def _nombre(cls, v):
+        return _validar_nombre(v)
+
+    @field_validator('piso', 'red', mode='before')
+    @classmethod
+    def _texto(cls, v):
+        return limpiar(v)
+
+
+class Ping(BaseModel):
+    responde: bool
+    detalle: str
 
 
 class Disco(BaseModel):
@@ -66,6 +99,10 @@ class PC(BaseModel):
 
 class PCDetalle(PC):
     discos: list[Disco]
+
+
+class PCCreada(PC):
+    ping: Ping
 
 
 # ---------------------------------------------------------------- consultas
@@ -123,8 +160,9 @@ def ver_pc(pc_id: int, con: sqlite3.Connection = Depends(get_db)):
     return pc
 
 
-@router.post('', response_model=PC, status_code=201, summary='Cargar una PC',
-             description='Da de alta la PC con estado "pendiente". El hardware se completa al relevarla.')
+@router.post('', response_model=PCCreada, status_code=201, summary='Cargar una PC',
+             description='Da de alta la PC y le hace un ping. Si responde queda "pendiente" de relevar; '
+                         'si no, queda "sin_respuesta". El resultado del ping vuelve en el campo "ping".')
 def crear_pc(datos: PCCrear, con: sqlite3.Connection = Depends(get_db)):
     verificar_area(con, datos.area_id)
     with con:
@@ -135,4 +173,37 @@ def crear_pc(datos: PCCrear, con: sqlite3.Connection = Depends(get_db)):
             )
         except sqlite3.IntegrityError:
             raise HTTPException(409, f'Ya existe la PC {datos.nombre}')
-    return _a_dict(con.execute(f'{_SELECT} WHERE e.id = ?', (cur.lastrowid,)).fetchone())
+    pc_id = cur.lastrowid
+
+    # el ping se hace con la PC ya guardada: si falla, el alta no se pierde
+    ping = hacer_ping(datos.nombre)
+    if not ping.responde:
+        with con:
+            con.execute("UPDATE equipos SET estado = 'sin_respuesta', ultimo_error = ? WHERE id = ?",
+                        (ping.detalle, pc_id))
+
+    pc = _a_dict(con.execute(f'{_SELECT} WHERE e.id = ?', (pc_id,)).fetchone())
+    pc['ping'] = {'responde': ping.responde, 'detalle': ping.detalle}
+    return pc
+
+
+@router.patch('/{pc_id}', response_model=PC, summary='Editar una PC',
+              description='Modifica nombre, área, piso o red. Solo cambia los campos enviados.')
+def editar_pc(pc_id: int, datos: PCEditar, con: sqlite3.Connection = Depends(get_db)):
+    if not con.execute('SELECT 1 FROM equipos WHERE id = ?', (pc_id,)).fetchone():
+        raise HTTPException(404, f'No existe la PC {pc_id}')
+    cambios = datos.model_dump(exclude_unset=True)
+    for campo in ('nombre', 'area_id', 'piso'):
+        if campo in cambios and cambios[campo] is None:
+            raise HTTPException(422, f'El campo {campo} no puede quedar vacío.')
+    if 'area_id' in cambios:
+        verificar_area(con, cambios['area_id'])
+
+    if cambios:
+        columnas = ', '.join(f'{c} = ?' for c in cambios)
+        with con:
+            try:
+                con.execute(f'UPDATE equipos SET {columnas} WHERE id = ?', (*cambios.values(), pc_id))
+            except sqlite3.IntegrityError:
+                raise HTTPException(409, f'Ya existe la PC {cambios.get("nombre")}')
+    return _a_dict(con.execute(f'{_SELECT} WHERE e.id = ?', (pc_id,)).fetchone())
