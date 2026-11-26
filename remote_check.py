@@ -1,8 +1,22 @@
-import wmi, json, subprocess
-with open('credenciales.txt', 'r', encoding='utf-8') as file:
-    aux = file.readlines()
-    us = aux[0][:-1]#borra un salto de linea
-    pwd = aux[1]
+import os, wmi, json, subprocess
+from pathlib import Path
+
+
+def _cargar_env(ruta=Path(__file__).with_name('.env')):
+    """Carga KEY=VALOR del .env en os.environ (sin pisar variables ya definidas)."""
+    if not ruta.exists():
+        return
+    for linea in ruta.read_text(encoding='utf-8').splitlines():
+        linea = linea.strip()
+        if linea and not linea.startswith('#') and '=' in linea:
+            clave, valor = linea.split('=', 1)
+            os.environ.setdefault(clave.strip(), valor.strip().strip('"\''))
+
+
+_cargar_env()
+# Si el .env no tiene credenciales, WMI se conecta con la sesión actual de Windows.
+us = os.environ.get('WMI_USUARIO', '')
+pwd = os.environ.get('WMI_PASSWORD', '')
 
 # estrucutura de datos
 
@@ -41,7 +55,7 @@ def cleaner():
 def casi_completo(identificador):
     # Conexión a un equipo remoto
     print(identificador)
-    c = wmi.WMI(identificador, user="USUARIO", password="REDACTADO")#namespace="root\\Microsoft\\Windows\\Storage"
+    c = wmi.WMI(identificador, user=us, password=pwd)#namespace="root\\Microsoft\\Windows\\Storage"
     # obtension de valores desde "c" que es la informacion del equipo completo
     
     for os in c.Win32_OperatingSystem():

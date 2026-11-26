@@ -23,3 +23,12 @@ Revisar cómo se ve y se usa la app en una pantalla grande.
 Revisar la lista y el detalle de monitores.
 - Lista actual: "Marca Modelo", una línea con "PC · Área · Piso" y las pulgadas en una etiqueta.
 - Detalle actual: hoja inferior con pulgadas, número de serie, entradas, PC, área, piso y observaciones.
+
+## 5. Revisión de credenciales (probar el 26/11/2026)
+Las credenciales de WMI ahora se leen del `.env` (`WMI_USUARIO`, `WMI_PASSWORD`; ver `.env.example`).
+- Prueba del 25/11: PC0001 responde al ping pero WMI da "Acceso denegado" con las credenciales
+  del `.env`; con la sesión actual de Windows (sin credenciales) sí conecta.
+- [x] Si el `.env` no tiene credenciales, se usa la sesión actual de Windows (probado con PC0001 el 26/11).
+  Las credenciales anteriores quedaron comentadas en el `.env` porque WMI las rechazaba.
+- [ ] PC0026: el nombre no resuelve en la red; confirmar el nombre correcto.
+- [ ] Cambiar la contraseña que quedó en el historial de git (estaba escrita en `remote_check.py`).
