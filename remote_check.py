@@ -10,7 +10,12 @@ def _cargar_env(ruta=Path(__file__).with_name('.env')):
         linea = linea.strip()
         if linea and not linea.startswith('#') and '=' in linea:
             clave, valor = linea.split('=', 1)
-            os.environ.setdefault(clave.strip(), valor.strip().strip('"\''))
+            valor = valor.strip()
+            # Solo se quitan comillas si envuelven el valor completo ("..." o '...'):
+            # una comilla que forma parte de la contraseña se respeta.
+            if len(valor) >= 2 and valor[0] == valor[-1] and valor[0] in '"\'':
+                valor = valor[1:-1]
+            os.environ.setdefault(clave.strip(), valor)
 
 
 _cargar_env()

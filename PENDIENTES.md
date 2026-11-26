@@ -30,5 +30,7 @@ Las credenciales de WMI ahora se leen del `.env` (`WMI_USUARIO`, `WMI_PASSWORD`;
   del `.env`; con la sesión actual de Windows (sin credenciales) sí conecta.
 - [x] Si el `.env` no tiene credenciales, se usa la sesión actual de Windows (probado con PC0001 el 26/11).
   Las credenciales anteriores quedaron comentadas en el `.env` porque WMI las rechazaba.
+- [x] Causa del "Acceso denegado": el lector del `.env` borraba una comilla que es parte de la contraseña.
+  Corregido el 26/11: solo se quitan comillas si envuelven todo el valor. Probado con PC0001.
 - [ ] PC0026: el nombre no resuelve en la red; confirmar el nombre correcto.
 - [ ] Cambiar la contraseña que quedó en el historial de git (estaba escrita en `remote_check.py`).
