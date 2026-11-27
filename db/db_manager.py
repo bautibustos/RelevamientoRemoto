@@ -16,8 +16,16 @@ from .marcas import marca_disco
 RUTA_DB = crear_db.RUTA_DB
 
 
+# Bases ya creadas/migradas en este proceso: crear_db corre una sola vez por ruta,
+# no en cada conexión (RUTA_DB puede cambiar, por eso se recuerda por ruta).
+_bases_listas = set()
+
+
 def conectar():
-    crear_db.crear_db(RUTA_DB)  # asegura que las tablas existan
+    ruta = str(RUTA_DB)
+    if ruta not in _bases_listas:
+        crear_db.crear_db(RUTA_DB)  # asegura que las tablas existan
+        _bases_listas.add(ruta)
     return crear_db.conectar(RUTA_DB)
 
 

@@ -31,6 +31,7 @@ class ApiFalsa {
       final q = req.url.queryParameters['q']?.toUpperCase() ?? '';
       return _json(pcs.where((p) => (p['nombre'] as String).contains(q)).toList());
     }
+    if (req.method == 'GET' && ruta == '/monitores') return _json([]);
     final relevar = RegExp(r'^/pc/(\d+)/relevar$').firstMatch(ruta);
     if (relevar != null && req.method == 'POST') {
       final p = pcs.firstWhere((p) => p['id'] == int.parse(relevar.group(1)!));

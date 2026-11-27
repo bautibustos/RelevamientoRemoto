@@ -54,6 +54,12 @@ class _ConsultarPcScreenState extends State<ConsultarPcScreen> {
     });
   }
 
+  /// Arrastrar para actualizar: vuelve a buscar con los mismos filtros.
+  Future<void> _actualizar() {
+    _buscar();
+    return _resultados!.then((_) {}, onError: (_) {}); // el error se muestra en la lista
+  }
+
   void _alEscribir(String _) {
     _espera?.cancel();
     _espera = Timer(const Duration(milliseconds: 300), _buscar);
@@ -74,7 +80,7 @@ class _ConsultarPcScreenState extends State<ConsultarPcScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _filtros(context),
-          Expanded(child: _lista(context)),
+          Expanded(child: RefreshIndicator(onRefresh: _actualizar, child: _lista(context))),
         ],
       ),
     );
@@ -157,11 +163,11 @@ class _ConsultarPcScreenState extends State<ConsultarPcScreen> {
       future: _resultados,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return EstadoCarga.error(snapshot.error.toString(), onReintentar: _buscar);
+          return Desplazable(child: EstadoCarga.error(snapshot.error.toString(), onReintentar: _buscar));
         }
         final pcs = snapshot.data;
-        if (pcs == null) return const EstadoCarga.cargando('Buscando equipos…');
-        if (pcs.isEmpty) return const EstadoCarga.vacio('No hay equipos que coincidan con la búsqueda.');
+        if (pcs == null) return Desplazable(child: const EstadoCarga.cargando('Buscando equipos…'));
+        if (pcs.isEmpty) return Desplazable(child: const EstadoCarga.vacio('No hay equipos que coincidan con la búsqueda.'));
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -183,6 +189,7 @@ class _ConsultarPcScreenState extends State<ConsultarPcScreen> {
             ),
             Expanded(
               child: ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 96), // espacio para el botón Cargar
                 itemCount: pcs.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 8),

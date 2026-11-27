@@ -48,3 +48,17 @@ def crear_area(datos: AreaCrear, con: sqlite3.Connection = Depends(get_db)):
             existente = con.execute('SELECT id, nombre FROM areas WHERE nombre = ?', (datos.nombre,)).fetchone()
             raise HTTPException(409, f'Ya existe el área "{existente["nombre"]}" con id {existente["id"]}')
     return {'id': cur.lastrowid, 'nombre': datos.nombre}
+
+
+@router.patch('/{area_id}', response_model=Area, summary='Renombrar un área',
+              description='Cambia el nombre del área. Las PCs y monitores de esa área no se tocan.')
+def editar_area(area_id: int, datos: AreaCrear, con: sqlite3.Connection = Depends(get_db)):
+    if not con.execute('SELECT 1 FROM areas WHERE id = ?', (area_id,)).fetchone():
+        raise HTTPException(404, f'No existe el área {area_id}')
+    with con:
+        try:
+            con.execute('UPDATE areas SET nombre = ? WHERE id = ?', (datos.nombre, area_id))
+        except sqlite3.IntegrityError:
+            existente = con.execute('SELECT id, nombre FROM areas WHERE nombre = ?', (datos.nombre,)).fetchone()
+            raise HTTPException(409, f'Ya existe el área "{existente["nombre"]}" con id {existente["id"]}')
+    return {'id': area_id, 'nombre': datos.nombre}

@@ -35,6 +35,27 @@ def relevar(nombre):
             pythoncom.CoUninitialize()
 
 
+def probar_wmi(nombre):
+    """Conexión corta por WMI (solo el sistema operativo), sin guardar nada.
+
+    Devuelve (ok, detalle). Sirve para saber si el equipo acepta WMI antes de relevarlo.
+    """
+    import pythoncom
+    import remote_check  # carga el .env y las credenciales
+    import wmi
+
+    with _candado:
+        pythoncom.CoInitialize()
+        try:
+            c = wmi.WMI(nombre, user=remote_check.us, password=remote_check.pwd)
+            so = next((str(o.Caption).strip() for o in c.Win32_OperatingSystem()), None)
+            return True, f'WMI responde ({so}).' if so else 'WMI responde.'
+        except Exception as e:  # acceso denegado, RPC no disponible, timeouts
+            return False, mensaje_de_error(e)
+        finally:
+            pythoncom.CoUninitialize()
+
+
 def guardar(nombre, piso, area, red, info):
     db_manager.RUTA_DB = RUTA_DB  # la misma base que usa la API
     db_manager.guardar_relevamiento(nombre, piso, area, red, info)

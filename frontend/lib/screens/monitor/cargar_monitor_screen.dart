@@ -11,8 +11,12 @@ import '../../models/pc.dart';
 import '../../widgets/estado_carga.dart';
 
 /// Alta de un monitor en tres bloques: ubicación, datos del monitor y entradas de video.
+/// Con [monitor] el mismo formulario sirve para editarlo.
 class CargarMonitorScreen extends StatefulWidget {
-  const CargarMonitorScreen({super.key});
+  const CargarMonitorScreen({super.key, this.monitor});
+
+  /// El monitor a editar; null para cargar uno nuevo.
+  final Monitor? monitor;
 
   /// Tamaños más comunes: se cargan con un toque.
   static const pulgadasFrecuentes = [19.0, 21.5, 22.0, 23.8, 24.0, 27.0];
@@ -33,7 +37,7 @@ class _CargarMonitorScreenState extends State<CargarMonitorScreen> {
 
   Future<(List<Area>, List<String>)>? _catalogos;
   Area? _area;
-  Pc? _equipo;
+  EquipoRef? _equipo;
   String _textoEquipo = '';
   final Map<String, int> _entradas = {};
   List<String> _ordenInterfaces = const [];
@@ -42,6 +46,27 @@ class _CargarMonitorScreenState extends State<CargarMonitorScreen> {
   bool _intentado = false;
   String? _errorSerie;
   String? _errorGeneral;
+
+  bool get _editando => widget.monitor != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final m = widget.monitor;
+    if (m == null) return;
+    _area = m.area;
+    _piso.text = m.piso ?? '';
+    _marca.text = m.marca ?? '';
+    _modelo.text = m.modelo ?? '';
+    if (m.pulgadas != null) _pulgadas.text = _formatoPulgadas(m.pulgadas!);
+    _serie.text = m.numeroSerie ?? '';
+    _observaciones.text = m.observaciones ?? '';
+    _equipo = m.equipo;
+    _textoEquipo = m.equipo?.nombre ?? '';
+    for (final e in m.entradas) {
+      _entradas[e.nombre] = e.cantidad;
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -73,7 +98,7 @@ class _CargarMonitorScreenState extends State<CargarMonitorScreen> {
   /// Al elegir la PC, completa área y piso si todavía están vacíos.
   void _elegirEquipo(Pc pc, List<Area> areas) {
     setState(() {
-      _equipo = pc;
+      _equipo = EquipoRef(id: pc.id, nombre: pc.nombre);
       _textoEquipo = pc.nombre;
       if (_area == null && pc.area != null) {
         _area = areas.where((a) => a.id == pc.area!.id).firstOrNull;
@@ -96,21 +121,36 @@ class _CargarMonitorScreenState extends State<CargarMonitorScreen> {
     if (!_form.currentState!.validate()) return;
 
     setState(() => _guardando = true);
+    final entradas = [
+      for (final nombre in _ordenInterfaces) // en el orden del catálogo
+        if ((_entradas[nombre] ?? 0) > 0) Entrada(nombre: nombre, cantidad: _entradas[nombre]!),
+    ];
+    final api = ApiScope.of(context);
     try {
-      final monitor = await ApiScope.of(context).crearMonitor(
-        marca: _marca.text.trim(),
-        modelo: _modelo.text.trim(),
-        pulgadas: _pulgadasValor!,
-        areaId: _area!.id,
-        piso: _limpio(_piso),
-        numeroSerie: _limpio(_serie)?.toUpperCase(),
-        equipoId: _equipo?.id,
-        entradas: [
-          for (final nombre in _ordenInterfaces) // en el orden del catálogo
-            if ((_entradas[nombre] ?? 0) > 0) Entrada(nombre: nombre, cantidad: _entradas[nombre]!),
-        ],
-        observaciones: _limpio(_observaciones),
-      );
+      final monitor = _editando
+          // se envía todo el formulario: los campos vaciados quedan en null (ej. desconectar la PC)
+          ? await api.editarMonitor(widget.monitor!.id, {
+              'marca': _marca.text.trim(),
+              'modelo': _modelo.text.trim(),
+              'pulgadas': _pulgadasValor!,
+              'area_id': _area!.id,
+              'piso': _limpio(_piso),
+              'numero_serie': _limpio(_serie)?.toUpperCase(),
+              'equipo_id': _equipo?.id,
+              'interfaces': [for (final e in entradas) e.toJson()],
+              'observaciones': _limpio(_observaciones),
+            })
+          : await api.crearMonitor(
+              marca: _marca.text.trim(),
+              modelo: _modelo.text.trim(),
+              pulgadas: _pulgadasValor!,
+              areaId: _area!.id,
+              piso: _limpio(_piso),
+              numeroSerie: _limpio(_serie)?.toUpperCase(),
+              equipoId: _equipo?.id,
+              entradas: entradas,
+              observaciones: _limpio(_observaciones),
+            );
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -137,7 +177,7 @@ class _CargarMonitorScreenState extends State<CargarMonitorScreen> {
       builder: (context, snapshot) {
         final listo = snapshot.connectionState == ConnectionState.done && snapshot.hasData;
         return Scaffold(
-          appBar: AppBar(title: const Text('Cargar monitor')),
+          appBar: AppBar(title: Text(_editando ? 'Editar monitor' : 'Cargar monitor')),
           bottomNavigationBar: listo ? _botones(context) : null,
           body: SafeArea(
             child: switch (snapshot) {

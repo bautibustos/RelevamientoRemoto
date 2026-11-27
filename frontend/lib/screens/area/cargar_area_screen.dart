@@ -3,10 +3,14 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../api/api_client.dart';
 import '../../api/api_scope.dart';
+import '../../models/area.dart';
 
-/// Alta de un área: solo el nombre.
+/// Alta de un área: solo el nombre. Con [area] sirve para renombrarla.
 class CargarAreaScreen extends StatefulWidget {
-  const CargarAreaScreen({super.key});
+  const CargarAreaScreen({super.key, this.area});
+
+  /// El área a renombrar; null para agregar una nueva.
+  final Area? area;
 
   @override
   State<CargarAreaScreen> createState() => _CargarAreaScreenState();
@@ -21,6 +25,14 @@ class _CargarAreaScreenState extends State<CargarAreaScreen> {
   bool _intentado = false;
   String? _errorNombre;
   String? _errorGeneral;
+
+  bool get _editando => widget.area != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _nombre.text = widget.area?.nombre ?? '';
+  }
 
   @override
   void dispose() {
@@ -38,13 +50,22 @@ class _CargarAreaScreenState extends State<CargarAreaScreen> {
     if (!_form.currentState!.validate()) return;
 
     final nombre = _nombre.text.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (_editando && nombre == widget.area!.nombre) {
+      Navigator.of(context).pop(false); // no cambió nada
+      return;
+    }
     setState(() => _guardando = true);
+    final api = ApiScope.of(context);
     try {
-      await ApiScope.of(context).crearArea(nombre);
+      if (_editando) {
+        await api.editarArea(widget.area!.id, nombre);
+      } else {
+        await api.crearArea(nombre);
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Área $nombre agregada.')));
+        ..showSnackBar(SnackBar(content: Text(_editando ? 'Área renombrada a $nombre.' : 'Área $nombre agregada.')));
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -64,7 +85,7 @@ class _CargarAreaScreenState extends State<CargarAreaScreen> {
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Agregar área')),
+      appBar: AppBar(title: Text(_editando ? 'Editar área' : 'Agregar área')),
       body: SafeArea(
         child: Align(
           alignment: Alignment.topCenter,

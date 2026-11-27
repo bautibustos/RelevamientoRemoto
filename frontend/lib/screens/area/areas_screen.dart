@@ -5,6 +5,7 @@ import '../../models/area.dart';
 import '../../rutas.dart';
 import '../../widgets/estado_carga.dart';
 import '../../widgets/pantalla_modulo.dart';
+import 'cargar_area_screen.dart';
 
 /// Pantalla principal del módulo Áreas: búsqueda por nombre y botón Agregar.
 /// Las áreas son pocas, así que se traen todas y se filtran en la app.
@@ -36,6 +37,18 @@ class _AreasScreenState extends State<AreasScreen> {
     setState(() {
       _areas = nuevas;
     });
+  }
+
+  /// Arrastrar para actualizar.
+  Future<void> _actualizar() {
+    _recargar();
+    return _areas!.then((_) {}, onError: (_) {});
+  }
+
+  Future<void> _editar(Area area) async {
+    final guardada = await Navigator.of(context)
+        .push<bool>(MaterialPageRoute(builder: (_) => CargarAreaScreen(area: area)));
+    if (guardada == true && mounted) _recargar();
   }
 
   Future<void> _agregar() async {
@@ -73,7 +86,7 @@ class _AreasScreenState extends State<AreasScreen> {
               ),
             ),
           ),
-          Expanded(child: _lista(context)),
+          Expanded(child: RefreshIndicator(onRefresh: _actualizar, child: _lista(context))),
         ],
       ),
     );
@@ -84,16 +97,16 @@ class _AreasScreenState extends State<AreasScreen> {
     return FutureBuilder<List<Area>>(
       future: _areas,
       builder: (context, snapshot) {
-        if (snapshot.hasError) return EstadoCarga.error(snapshot.error.toString(), onReintentar: _recargar);
+        if (snapshot.hasError) return Desplazable(child: EstadoCarga.error(snapshot.error.toString(), onReintentar: _recargar));
         final todas = snapshot.data;
-        if (todas == null) return const EstadoCarga.cargando('Cargando áreas…');
-        if (todas.isEmpty) return const EstadoCarga.vacio('Todavía no hay áreas. Agregá la primera con el botón Agregar.');
+        if (todas == null) return Desplazable(child: const EstadoCarga.cargando('Cargando áreas…'));
+        if (todas.isEmpty) return Desplazable(child: const EstadoCarga.vacio('Todavía no hay áreas. Agregá la primera con el botón Agregar.'));
 
         final texto = _sinAcentos(_busqueda.text.trim().toLowerCase());
         final areas = texto.isEmpty
             ? todas
             : todas.where((a) => _sinAcentos(a.nombre.toLowerCase()).contains(texto)).toList();
-        if (areas.isEmpty) return const EstadoCarga.vacio('No hay áreas que coincidan con la búsqueda.');
+        if (areas.isEmpty) return Desplazable(child: const EstadoCarga.vacio('No hay áreas que coincidan con la búsqueda.'));
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -107,6 +120,7 @@ class _AreasScreenState extends State<AreasScreen> {
             ),
             Expanded(
               child: ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
                 itemCount: areas.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
@@ -116,6 +130,7 @@ class _AreasScreenState extends State<AreasScreen> {
                     titulo: a.nombre,
                     subtitulo: '${_cantidad(a.cantidadPc, 'PC', 'PCs')} · '
                         '${_cantidad(a.cantidadMonitores, 'monitor', 'monitores')}',
+                    onTap: () => _editar(a),
                   );
                 },
               ),

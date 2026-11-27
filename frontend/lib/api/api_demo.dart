@@ -103,6 +103,19 @@ http.Client clienteDemo({Duration demora = const Duration(milliseconds: 250)}) {
       return json(nueva, 201);
     }
 
+    final areaId = RegExp(r'^/areas/(\d+)$').firstMatch(ruta);
+    if (req.method == 'PATCH' && areaId != null) {
+      final id = int.parse(areaId.group(1)!);
+      final area = areas.where((a) => a['id'] == id).firstOrNull;
+      if (area == null) return json({'detail': 'No existe el área $id'}, 404);
+      final nombre = ((jsonDecode(req.body) as Map)['nombre'] as String).trim();
+      if (areas.any((a) => a['id'] != id && (a['nombre'] as String).toLowerCase() == nombre.toLowerCase())) {
+        return json({'detail': 'Ya existe el área "$nombre"'}, 409);
+      }
+      area['nombre'] = nombre;
+      return json(area);
+    }
+
     if (req.method == 'GET' && ruta == '/pc') {
       final q = (req.url.queryParameters['q'] ?? '').toUpperCase();
       final areaId = int.tryParse(req.url.queryParameters['area_id'] ?? '');
@@ -133,6 +146,22 @@ http.Client clienteDemo({Duration demora = const Duration(milliseconds: 250)}) {
         ..['red'] = p['red'];
       pcs[i] = nueva;
       return json({...nueva, 'relevamiento': {'ok': true, 'detalle': 'Hardware actualizado desde el equipo.'}});
+    }
+
+    final probar = RegExp(r'^/pc/(\d+)/probar$').firstMatch(ruta);
+    if (req.method == 'POST' && probar != null) {
+      // prueba simulada: las PC "ok" responden a todo; las "sin respuesta", a nada; el resto, solo al ping
+      final p = pcs.where((p) => p['id'] == int.parse(probar.group(1)!)).firstOrNull;
+      if (p == null) return json({'detail': 'No existe la PC'}, 404);
+      final responde = p['estado'] != 'sin_respuesta';
+      return json({
+        'ping': {'ok': responde, 'detalle': responde ? 'Respondió al ping.' : 'No responde al ping.'},
+        'wmi': !responde
+            ? null
+            : p['estado'] == 'ok'
+                ? {'ok': true, 'detalle': 'WMI responde ([SISTEMA OPERATIVO]).'}
+                : {'ok': false, 'detalle': 'El servidor RPC no está disponible.'},
+      });
     }
 
     if (req.method == 'PATCH' && detalle != null) {
@@ -187,6 +216,7 @@ http.Client clienteDemo({Duration demora = const Duration(milliseconds: 250)}) {
       final q = (req.url.queryParameters['q'] ?? '').toUpperCase();
       final areaId = int.tryParse(req.url.queryParameters['area_id'] ?? '');
       final sinPc = req.url.queryParameters['sin_pc'];
+      final equipoId = int.tryParse(req.url.queryParameters['equipo_id'] ?? '');
       bool coincide(Map<String, dynamic> m) => [m['marca'], m['modelo'], m['numero_serie'], m['equipo']?['nombre']]
           .whereType<String>()
           .any((t) => t.toUpperCase().contains(q));
@@ -194,7 +224,31 @@ http.Client clienteDemo({Duration demora = const Duration(milliseconds: 250)}) {
           .where((m) => q.isEmpty || coincide(m))
           .where((m) => areaId == null || (m['area'] as Map)['id'] == areaId)
           .where((m) => sinPc == null || (sinPc == 'true') == (m['equipo'] == null))
+          .where((m) => equipoId == null || (m['equipo'] as Map?)?['id'] == equipoId)
           .toList());
+    }
+
+    final monitorId = RegExp(r'^/monitores/(\d+)$').firstMatch(ruta);
+    if (req.method == 'PATCH' && monitorId != null) {
+      final id = int.parse(monitorId.group(1)!);
+      final m = monitores.where((m) => m['id'] == id).firstOrNull;
+      if (m == null) return json({'detail': 'No existe el monitor $id'}, 404);
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      final serie = body['numero_serie'] as String?;
+      if (serie != null && monitores.any((o) => o['id'] != id && o['numero_serie'] == serie)) {
+        return json({'detail': 'Ya existe un monitor con número de serie $serie'}, 409);
+      }
+      for (final MapEntry(:key, :value) in body.entries) {
+        switch (key) {
+          case 'area_id':
+            m['area'] = areas.firstWhere((a) => a['id'] == value);
+          case 'equipo_id':
+            m['equipo'] = refPc(value as int?);
+          default:
+            m[key] = value;
+        }
+      }
+      return json(m);
     }
 
     if (req.method == 'POST' && ruta == '/monitores') {

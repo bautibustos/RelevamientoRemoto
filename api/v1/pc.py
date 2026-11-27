@@ -157,6 +157,16 @@ class Relevamiento(BaseModel):
     detalle: str
 
 
+class Prueba(BaseModel):
+    ok: bool
+    detalle: str
+
+
+class PruebaConexion(BaseModel):
+    ping: Prueba
+    wmi: Prueba | None = Field(description='Vacío si el ping falló (no se intenta WMI).')
+
+
 class PCRelevada(PCDetalle):
     relevamiento: Relevamiento
 
@@ -312,3 +322,19 @@ def relevar_pc(pc_id: int, con: sqlite3.Connection = Depends(get_db)):
     pc = ver_pc(pc_id, con)
     pc['relevamiento'] = resultado
     return pc
+
+
+@router.post('/{pc_id}/probar', response_model=PruebaConexion, summary='Probar ping y WMI',
+             description='Hace ping al equipo y, si responde, una conexión corta por WMI. '
+                         'No guarda nada ni cambia el estado: es solo un diagnóstico. '
+                         'Para actualizar el hardware usar POST /pc/{id}/relevar.')
+def probar_pc(pc_id: int, con: sqlite3.Connection = Depends(get_db)):
+    fila = con.execute('SELECT nombre FROM equipos WHERE id = ?', (pc_id,)).fetchone()
+    if not fila:
+        raise HTTPException(404, f'No existe la PC {pc_id}')
+    ping = hacer_ping(fila['nombre'])
+    resultado = {'ping': {'ok': ping.responde, 'detalle': ping.detalle}, 'wmi': None}
+    if ping.responde:
+        ok, detalle = relevamiento.probar_wmi(fila['nombre'])
+        resultado['wmi'] = {'ok': ok, 'detalle': detalle}
+    return resultado

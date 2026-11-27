@@ -2,12 +2,16 @@ import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
 
+import '../../api/api_client.dart';
 import '../../api/api_scope.dart';
 import '../../models/area.dart';
 import '../../models/monitor.dart';
+import '../../models/pc.dart';
 import '../../rutas.dart';
 import '../../widgets/estado_carga.dart';
 import '../../widgets/pantalla_modulo.dart';
+import '../pc/detalle_pc_sheet.dart';
+import 'cargar_monitor_screen.dart';
 
 /// Pantalla principal del módulo Monitor: búsqueda, filtros y botón Cargar.
 class MonitorScreen extends StatefulWidget {
@@ -51,6 +55,12 @@ class _MonitorScreenState extends State<MonitorScreen> {
     });
   }
 
+  /// Arrastrar para actualizar: vuelve a buscar con los mismos filtros.
+  Future<void> _actualizar() {
+    _buscar();
+    return _resultados!.then((_) {}, onError: (_) {});
+  }
+
   void _alEscribir(String _) {
     _espera?.cancel();
     _espera = Timer(const Duration(milliseconds: 300), _buscar);
@@ -71,7 +81,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _filtros(),
-          Expanded(child: _lista(context)),
+          Expanded(child: RefreshIndicator(onRefresh: _actualizar, child: _lista(context))),
         ],
       ),
     );
@@ -152,11 +162,11 @@ class _MonitorScreenState extends State<MonitorScreen> {
       future: _resultados,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return EstadoCarga.error(snapshot.error.toString(), onReintentar: _buscar);
+          return Desplazable(child: EstadoCarga.error(snapshot.error.toString(), onReintentar: _buscar));
         }
         final monitores = snapshot.data;
-        if (monitores == null) return const EstadoCarga.cargando('Buscando monitores…');
-        if (monitores.isEmpty) return const EstadoCarga.vacio('No hay monitores que coincidan con la búsqueda.');
+        if (monitores == null) return Desplazable(child: const EstadoCarga.cargando('Buscando monitores…'));
+        if (monitores.isEmpty) return Desplazable(child: const EstadoCarga.vacio('No hay monitores que coincidan con la búsqueda.'));
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -170,6 +180,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
             ),
             Expanded(
               child: ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
                 itemCount: monitores.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
@@ -195,7 +206,59 @@ class _MonitorScreenState extends State<MonitorScreen> {
     );
   }
 
-  void _mostrarDetalle(BuildContext context, Monitor m) {
+  /// Detalle del monitor. Desde ahí se puede editar o abrir la PC a la que está conectado.
+  Future<void> _mostrarDetalle(BuildContext context, Monitor m) async {
+    final accion = await showModalBottomSheet<Object>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _DetalleMonitor(monitor: m),
+    );
+    if (!context.mounted) return;
+    switch (accion) {
+      case Pc pc:
+        if (await mostrarDetallePc(context, pc)) _buscar(); // por si se editó o relevó la PC
+      case Monitor monitor:
+        final guardado = await Navigator.of(context)
+            .push<bool>(MaterialPageRoute(builder: (_) => CargarMonitorScreen(monitor: monitor)));
+        if (guardado == true && mounted) _buscar();
+    }
+  }
+}
+
+/// Hoja de detalle. Se cierra devolviendo el [Monitor] para editarlo o la [Pc] conectada para abrirla.
+class _DetalleMonitor extends StatefulWidget {
+  const _DetalleMonitor({required this.monitor});
+
+  final Monitor monitor;
+
+  @override
+  State<_DetalleMonitor> createState() => _DetalleMonitorState();
+}
+
+class _DetalleMonitorState extends State<_DetalleMonitor> {
+  bool _abriendoPc = false;
+  String? _errorPc;
+
+  Future<void> _abrirPc(EquipoRef equipo) async {
+    setState(() {
+      _abriendoPc = true;
+      _errorPc = null;
+    });
+    try {
+      final pc = await ApiScope.of(context).pc(equipo.id);
+      if (mounted) Navigator.of(context).pop(pc);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _errorPc = e.mensaje);
+    } finally {
+      if (mounted) setState(() => _abriendoPc = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.monitor;
     final tema = Theme.of(context);
     final secundario = tema.colorScheme.onSurfaceVariant;
     Widget fila(String etiqueta, String? valor) => Padding(
@@ -213,28 +276,48 @@ class _MonitorScreenState extends State<MonitorScreen> {
           child: Text(t.toUpperCase(), style: tema.textTheme.labelMedium?.copyWith(color: secundario, letterSpacing: 0.8)),
         );
 
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => ListView(
-        shrinkWrap: true,
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-        children: [
-          Text(m.titulo.isEmpty ? 'Monitor ${m.id}' : m.titulo,
-              style: tema.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600)),
-          titulo('Monitor'),
-          fila('Pulgadas', m.pulgadasTexto),
-          fila('Número de serie', m.numeroSerie),
-          fila('Entradas', m.entradas.isEmpty ? null : m.entradas.join(', ')),
-          titulo('Ubicación'),
-          fila('PC conectada', m.equipo?.nombre ?? 'Sin PC'),
-          fila('Área', m.area?.nombre),
-          fila('Piso', m.piso),
-          if (m.observaciones != null) ...[titulo('Observaciones'), Text(m.observaciones!)],
-        ],
-      ),
+    return ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+      children: [
+        Text(m.titulo.isEmpty ? 'Monitor ${m.id}' : m.titulo,
+            style: tema.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        Wrap(
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).pop(m),
+              icon: const Icon(Icons.edit_outlined, size: 20),
+              label: const Text('Editar'),
+            ),
+          ],
+        ),
+        titulo('PC conectada'),
+        if (m.equipo == null)
+          Text('Sin PC', style: tema.textTheme.bodyLarge?.copyWith(color: secundario))
+        else
+          FilaResultado(
+            titulo: m.equipo!.nombre,
+            subtitulo: _abriendoPc ? 'Abriendo…' : 'Tocá para ver el detalle de la PC',
+            etiqueta: _abriendoPc
+                ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.desktop_windows_outlined),
+            onTap: _abriendoPc ? null : () => _abrirPc(m.equipo!),
+          ),
+        if (_errorPc != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(_errorPc!, style: tema.textTheme.bodyMedium?.copyWith(color: tema.colorScheme.error)),
+          ),
+        titulo('Monitor'),
+        fila('Pulgadas', m.pulgadasTexto),
+        fila('Número de serie', m.numeroSerie),
+        fila('Entradas', m.entradas.isEmpty ? null : m.entradas.join(', ')),
+        titulo('Ubicación'),
+        fila('Área', m.area?.nombre),
+        fila('Piso', m.piso),
+        if (m.observaciones != null) ...[titulo('Observaciones'), Text(m.observaciones!)],
+      ],
     );
   }
 }
