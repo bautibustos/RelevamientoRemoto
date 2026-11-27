@@ -21,11 +21,17 @@ class ApiFalsa {
   ];
   final pedidos = <http.Request>[];
 
+  /// Respuesta de GET /sistema. null = la API no la tiene (versión anterior): responde 404.
+  Map<String, dynamic>? sistema;
+
   late final client = MockClient((req) async {
     pedidos.add(req);
     final ruta = req.url.path.replaceFirst('/api/v1', '');
     if (req.method == 'GET' && ruta == '/areas') {
       return _json([{'id': 1, 'nombre': 'AREA 1'}]);
+    }
+    if (req.method == 'GET' && ruta == '/sistema') {
+      return sistema == null ? _json({'detail': 'no encontrado'}, 404) : _json(sistema!);
     }
     if (req.method == 'GET' && ruta == '/pc') {
       final q = req.url.queryParameters['q']?.toUpperCase() ?? '';
@@ -225,6 +231,62 @@ void main() {
     expect(find.text('Relevamiento completo'), findsOneWidget);
     await tester.dragUntilVisible(find.text('VIDEO NUEVO'), find.byType(ListView).last, const Offset(0, -150));
     expect(find.text('VIDEO NUEVO'), findsOneWidget);
+  });
+
+  // Modo doble API: la API de afuera solo carga y el validador de adentro releva.
+  // (No se usa pumpAndSettle: el indicador de progreso del seguimiento anima sin parar.)
+  Map<String, dynamic> sistemaCarga({required bool validadorActivo}) => {
+        'modo': 'carga',
+        'validador_local': false,
+        'validadores': [
+          {'nombre': 'SERVIDOR01 (pid 1)', 'ultimo_latido': '2026-11-27 10:00:00', 'activo': validadorActivo},
+        ],
+        'cola': {'pendientes': 0, 'relevando': 1},
+      };
+
+  testWidgets('El detalle sigue al validador hasta que termina y avisa el resultado', (tester) async {
+    final api = await _abrirApp(tester);
+    api.sistema = sistemaCarga(validadorActivo: true);
+    api.pcs.first
+      ..['estado'] = 'relevando'
+      ..['relevando_por'] = 'SERVIDOR01 (pid 1)';
+
+    await tester.tap(find.text('EQUIPO-EXISTENTE'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Relevando en SERVIDOR01 (pid 1)…'), findsOneWidget);
+    // mientras el validador la tiene no se puede volver a encolar
+    final relevar = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Volver a relevar'));
+    expect(relevar.onPressed, isNull);
+
+    // el validador termina: la próxima consulta (cada 3 s) trae el resultado
+    api.pcs.first
+      ..['estado'] = 'ok'
+      ..['relevando_por'] = null;
+    final consultasAntes = api.pedidos.where((r) => r.url.path.endsWith('/pc/1')).length;
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(api.pedidos.where((r) => r.url.path.endsWith('/pc/1')).length, greaterThan(consultasAntes));
+    expect(find.text('Relevamiento completo'), findsOneWidget);
+    expect(find.text('El validador relevó el equipo y guardó el hardware.'), findsOneWidget);
+    expect(find.textContaining('Relevando en'), findsNothing);
+
+    // terminado el relevamiento ya no se consulta más
+    final consultasDespues = api.pedidos.where((r) => r.url.path.endsWith('/pc/1')).length;
+    await tester.pump(const Duration(seconds: 7));
+    expect(api.pedidos.where((r) => r.url.path.endsWith('/pc/1')).length, consultasDespues);
+  });
+
+  testWidgets('Sin validador activo, la PC en cola avisa que nadie la va a relevar', (tester) async {
+    final api = await _abrirApp(tester);
+    api.sistema = sistemaCarga(validadorActivo: false);
+    api.pcs.first['estado'] = 'pendiente';
+
+    await tester.tap(find.text('EQUIPO-EXISTENTE'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('En cola: esperando que el validador de adentro de la red la tome…'), findsOneWidget);
+    expect(find.textContaining('No hay ningún validador activo'), findsOneWidget);
   });
 
   testWidgets('Salir de la edición con cambios pide confirmación', (tester) async {
