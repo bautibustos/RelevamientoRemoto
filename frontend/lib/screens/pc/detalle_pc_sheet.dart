@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../api/api_client.dart';
 import '../../api/api_scope.dart';
 import '../../theme.dart';
+import '../../models/monitor.dart';
 import '../../models/pc.dart';
 import '../../models/sistema.dart';
 import '../../widgets/estado_carga.dart';
@@ -52,8 +53,12 @@ const _cadaCuantoConsultar = Duration(seconds: 3);
 class _HojaDetalleState extends State<_HojaDetalle> {
   late ApiClient _api;
   Future<Pc>? _detalle;
+  Future<List<Monitor>>? _monitores;
   bool _relevando = false;
   ResultadoRelevamiento? _resultado;
+  bool _probando = false;
+  PruebaConexion? _prueba;
+  String? _errorPrueba;
 
   /// Modo de la API y validadores (null si la API no lo informa).
   EstadoSistema? _sistema;
@@ -67,6 +72,7 @@ class _HojaDetalleState extends State<_HojaDetalle> {
     super.didChangeDependencies();
     _api = ApiScope.of(context);
     _detalle ??= _cargarDetalle();
+    _monitores ??= _api.monitores(equipoId: widget.resumen.id);
   }
 
   @override
@@ -120,6 +126,23 @@ class _HojaDetalleState extends State<_HojaDetalle> {
     }
   }
 
+  /// Ping + WMI sin guardar nada: dice si el equipo se puede relevar.
+  Future<void> _probar() async {
+    setState(() {
+      _probando = true;
+      _prueba = null;
+      _errorPrueba = null;
+    });
+    try {
+      final prueba = await _api.probarPc(widget.resumen.id);
+      if (mounted) setState(() => _prueba = prueba);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _errorPrueba = e.mensaje);
+    } finally {
+      if (mounted) setState(() => _probando = false);
+    }
+  }
+
   Future<void> _relevar() async {
     setState(() {
       _relevando = true;
@@ -151,7 +174,9 @@ class _HojaDetalleState extends State<_HojaDetalle> {
         // mientras llega el detalle se muestra lo que ya trajo la lista
         final pc = snapshot.data ?? widget.resumen;
         final listo = snapshot.hasData && !_relevando;
-        return _Detalle(
+        return FutureBuilder<List<Monitor>>(
+          future: _monitores,
+          builder: (context, monitores) => _Detalle(
           pc: pc,
           scroll: widget.scroll,
           cargandoDiscos: snapshot.connectionState != ConnectionState.done,
@@ -164,6 +189,14 @@ class _HojaDetalleState extends State<_HojaDetalle> {
           resultado: _resultado,
           siguiendo: _seguimiento != null,
           sinValidador: _sistema != null && _sistema!.modoCarga && !_sistema!.hayValidadorActivo,
+          // en modo carga esta PC no llega a los equipos: la prueba no tendría sentido
+          onProbar: _probando || _relevando || (_sistema?.modoCarga ?? false) ? null : _probar,
+          probando: _probando,
+          prueba: _prueba,
+          errorPrueba: _errorPrueba,
+          monitores: monitores.data,
+          errorMonitores: monitores.hasError ? monitores.error.toString() : null,
+          ),
         );
       },
     );
@@ -182,7 +215,22 @@ class _Detalle extends StatelessWidget {
     this.resultado,
     this.siguiendo = false,
     this.sinValidador = false,
+    this.onProbar,
+    this.probando = false,
+    this.prueba,
+    this.errorPrueba,
+    this.monitores,
+    this.errorMonitores,
   });
+
+  final VoidCallback? onProbar;
+  final bool probando;
+  final PruebaConexion? prueba;
+  final String? errorPrueba;
+
+  /// null mientras se cargan.
+  final List<Monitor>? monitores;
+  final String? errorMonitores;
 
   final Pc pc;
   final VoidCallback? onEditar;
@@ -242,8 +290,26 @@ class _Detalle extends StatelessWidget {
                   : const Icon(Icons.refresh, size: 20),
               label: Text(relevando ? 'Relevando…' : 'Volver a relevar'),
             ),
+            OutlinedButton.icon(
+              onPressed: onProbar,
+              icon: probando
+                  ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.network_check, size: 20),
+              label: Text(probando ? 'Probando…' : 'Probar conexión'),
+            ),
           ],
         ),
+        if (probando)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'Probando ping y WMI. No se guarda nada.',
+              style: tema.textTheme.bodySmall?.copyWith(color: tema.colorScheme.onSurfaceVariant),
+            ),
+          ),
+        if (prueba != null) _AvisoPrueba(prueba!),
+        if (errorPrueba != null)
+          _AvisoRelevamiento(ResultadoRelevamiento(ok: false, detalle: errorPrueba!), titulo: 'No se pudo probar'),
         if (relevando)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -318,6 +384,25 @@ class _Detalle extends StatelessWidget {
           ]),
           if (cargandoDiscos) const EstadoCarga.cargando('Cargando discos…'),
         ],
+        const SizedBox(height: 8),
+        _Seccion('Monitores', [
+          if (errorMonitores != null)
+            ('Error', errorMonitores)
+          else if (monitores == null)
+            ('Monitores', 'Cargando…')
+          else if (monitores!.isEmpty)
+            ('Monitores', 'Sin monitores conectados')
+          else
+            for (final m in monitores!)
+              (
+                m.pulgadasTexto ?? 'Monitor',
+                [
+                  m.titulo.isEmpty ? 'Monitor ${m.id}' : m.titulo,
+                  if (m.numeroSerie != null) 'S/N ${m.numeroSerie}',
+                  if (m.entradas.isNotEmpty) m.entradas.join(', '),
+                ].join(' · ')
+              ),
+        ]),
         if (error != null)
           Text(error!, style: tema.textTheme.bodyMedium?.copyWith(color: tema.colorScheme.error)),
       ],
@@ -366,19 +451,21 @@ class _Seccion extends StatelessWidget {
 
 /// Resultado de volver a relevar, dentro de la hoja (un aviso inferior quedaría tapado por la hoja).
 class _AvisoRelevamiento extends StatelessWidget {
-  const _AvisoRelevamiento(this.resultado);
+  const _AvisoRelevamiento(this.resultado, {this.titulo});
 
   final ResultadoRelevamiento resultado;
+  final String? titulo;
 
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
     final c = tema.extension<ColoresEstado>() ?? ColoresEstado.claro;
-    final (icono, color, fondo, titulo) = resultado.enCola
+    final (icono, color, fondo, tituloPorDefecto) = resultado.enCola
         ? (Icons.schedule, c.neutro, c.neutroFondo, 'En cola del validador')
         : resultado.ok
             ? (Icons.check_circle, c.ok, c.okFondo, 'Relevamiento completo')
             : (Icons.warning_amber_rounded, c.alerta, c.alertaFondo, 'No se pudo relevar');
+    final titulo = this.titulo ?? tituloPorDefecto;
     return Container(
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(12),
@@ -402,6 +489,60 @@ class _AvisoRelevamiento extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Resultado de "Probar conexión": una línea para el ping y otra para WMI.
+class _AvisoPrueba extends StatelessWidget {
+  const _AvisoPrueba(this.prueba);
+
+  final PruebaConexion prueba;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final c = tema.extension<ColoresEstado>() ?? ColoresEstado.claro;
+    final (color, fondo, titulo) = prueba.ok
+        ? (c.ok, c.okFondo, 'El equipo se puede relevar')
+        : (c.alerta, c.alertaFondo, 'El equipo no se puede relevar');
+
+    Widget paso(String nombre, PasoPrueba? p) {
+      final (icono, colorPaso, texto) = switch (p) {
+        null => (Icons.remove_circle_outline, tema.colorScheme.onSurfaceVariant, 'No se probó (falló el ping).'),
+        PasoPrueba(ok: true) => (Icons.check_circle, c.ok, p.detalle),
+        _ => (Icons.cancel, c.alerta, p.detalle),
+      };
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icono, size: 20, color: colorPaso),
+            const SizedBox(width: 8),
+            SizedBox(width: 44, child: Text(nombre, style: tema.textTheme.titleSmall)),
+            Expanded(child: Text(texto, style: tema.textTheme.bodyMedium)),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: fondo,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(titulo, style: tema.textTheme.titleSmall?.copyWith(color: color)),
+          paso('Ping', prueba.ping),
+          paso('WMI', prueba.wmi),
         ],
       ),
     );

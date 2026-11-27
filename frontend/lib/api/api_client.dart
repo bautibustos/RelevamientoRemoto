@@ -42,6 +42,18 @@ class ApiClient {
     return Area.fromJson(datos as Map<String, dynamic>);
   }
 
+  /// Cambia el nombre del área.
+  Future<Area> editarArea(int id, String nombre) async {
+    final datos = await _enviar(
+      () => _http.patch(
+        _uri('/areas/$id'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'nombre': nombre}),
+      ),
+    );
+    return Area.fromJson(datos as Map<String, dynamic>);
+  }
+
   Future<List<Pc>> pcs({String? nombre, int? areaId, EstadoPc? estado}) async {
     final datos = await _get('/pc', {
       if (nombre != null && nombre.trim().isNotEmpty) 'q': nombre.trim(),
@@ -97,14 +109,20 @@ class ApiClient {
     }
   }
 
+  /// Prueba ping y WMI sin guardar nada (diagnóstico de la conexión).
+  Future<PruebaConexion> probarPc(int id) async =>
+      PruebaConexion.fromJson(await _enviar(() => _http.post(_uri('/pc/$id/probar'))) as Map<String, dynamic>);
+
   // ------------------------------------------------------------------ monitores
   Future<List<String>> interfaces() async {
     final datos = await _get('/interfaces') as List;
     return [for (final i in datos) (i as Map<String, dynamic>)['nombre'] as String];
   }
 
-  Future<List<Monitor>> monitores({String? texto, int? areaId, Conexion conexion = Conexion.todas}) async {
+  Future<List<Monitor>> monitores(
+      {String? texto, int? areaId, int? equipoId, Conexion conexion = Conexion.todas}) async {
     final datos = await _get('/monitores', {
+      if (equipoId != null) 'equipo_id': '$equipoId',
       if (texto != null && texto.trim().isNotEmpty) 'q': texto.trim(),
       if (areaId != null) 'area_id': '$areaId',
       if (conexion == Conexion.conPc) 'sin_pc': 'false',
@@ -139,6 +157,19 @@ class ApiClient {
           'interfaces': [for (final e in entradas) e.toJson()],
           'observaciones': ?observaciones,
         }),
+      ),
+    );
+    return Monitor.fromJson(datos as Map<String, dynamic>);
+  }
+
+  /// Edita el monitor. [cambios] usa los nombres de la API (ver PATCH /monitores/{id});
+  /// "equipo_id": null lo deja sin PC e "interfaces" reemplaza la lista completa.
+  Future<Monitor> editarMonitor(int id, Map<String, dynamic> cambios) async {
+    final datos = await _enviar(
+      () => _http.patch(
+        _uri('/monitores/$id'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(cambios),
       ),
     );
     return Monitor.fromJson(datos as Map<String, dynamic>);

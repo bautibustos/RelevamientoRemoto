@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:material_ui/material_ui.dart';
 
 import '../rutas.dart';
@@ -6,6 +8,9 @@ import 'menu_modulos.dart';
 /// Estructura común de cada módulo: encabezado con menú y título, contenido
 /// (la búsqueda) y el botón flotante "Cargar".
 class PantallaModulo extends StatelessWidget {
+  /// Ancho máximo de la columna de contenido (filtros y lista).
+  static const anchoContenido = 560.0;
+
   const PantallaModulo({
     super.key,
     required this.modulo,
@@ -33,6 +38,7 @@ class PantallaModulo extends StatelessWidget {
         title: Text(modulo.titulo),
       ),
       drawer: MenuModulos(actual: modulo),
+      floatingActionButtonLocation: const _BotonJuntoALaLista(anchoContenido),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: onCargar,
         icon: const Icon(Icons.add),
@@ -41,11 +47,32 @@ class PantallaModulo extends StatelessWidget {
       body: SafeArea(
         child: Align(
           alignment: Alignment.topCenter,
-          child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560), child: child),
+          child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: anchoContenido), child: child),
         ),
       ),
     );
   }
+}
+
+/// Como el botón flotante de abajo a la derecha, pero en pantallas anchas queda junto al borde
+/// derecho de la columna de contenido en lugar de irse al borde de la ventana.
+class _BotonJuntoALaLista extends FloatingActionButtonLocation {
+  const _BotonJuntoALaLista(this.anchoContenido);
+
+  final double anchoContenido;
+
+  @override
+  Offset getOffset(ScaffoldPrelayoutGeometry geometria) {
+    final normal = FloatingActionButtonLocation.endFloat.getOffset(geometria);
+    final ancho = geometria.scaffoldSize.width;
+    if (ancho <= anchoContenido) return normal;
+    // 16 = margen de la lista dentro de la columna
+    final bordeLista = (ancho + anchoContenido) / 2 - 16;
+    return Offset(math.min(normal.dx, bordeLista - geometria.floatingActionButtonSize.width), normal.dy);
+  }
+
+  @override
+  String toString() => 'FloatingActionButtonLocation.junto a la lista';
 }
 
 /// Fila de resultado: título, subtítulo, una etiqueta a la derecha y la flecha.

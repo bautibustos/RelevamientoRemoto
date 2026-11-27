@@ -1,3 +1,5 @@
+import 'dart:ui' show PointerDeviceKind;
+
 import 'package:material_ui/material_ui.dart';
 
 import 'api/api_client.dart';
@@ -31,6 +33,10 @@ class InventarioApp extends StatelessWidget {
         theme: temaClaro,
         darkTheme: temaOscuro,
         onGenerateRoute: generarRuta,
+        // en la compu también se puede arrastrar la lista con el mouse (para "arrastrar y actualizar")
+        scrollBehavior: const MaterialScrollBehavior().copyWith(
+          dragDevices: {...PointerDeviceKind.values},
+        ),
       ),
     );
   }

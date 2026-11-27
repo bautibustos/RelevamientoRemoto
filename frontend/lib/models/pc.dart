@@ -53,6 +53,32 @@ class ResultadoRelevamiento {
       );
 }
 
+/// Una parte de la prueba de conexión (ping o WMI).
+class PasoPrueba {
+  const PasoPrueba({required this.ok, required this.detalle});
+
+  final bool ok;
+  final String detalle;
+
+  factory PasoPrueba.fromJson(Map<String, dynamic> json) =>
+      PasoPrueba(ok: json['ok'] as bool, detalle: json['detalle'] as String? ?? '');
+}
+
+/// Resultado de probar la conexión (POST /pc/{id}/probar). [wmi] es null si el ping falló.
+class PruebaConexion {
+  const PruebaConexion({required this.ping, this.wmi});
+
+  final PasoPrueba ping;
+  final PasoPrueba? wmi;
+
+  bool get ok => ping.ok && (wmi?.ok ?? false);
+
+  factory PruebaConexion.fromJson(Map<String, dynamic> json) => PruebaConexion(
+        ping: PasoPrueba.fromJson(json['ping'] as Map<String, dynamic>),
+        wmi: json['wmi'] == null ? null : PasoPrueba.fromJson(json['wmi'] as Map<String, dynamic>),
+      );
+}
+
 class Memoria {
   const Memoria({required this.capacidadGb, this.mhz});
 

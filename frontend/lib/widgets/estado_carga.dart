@@ -1,5 +1,23 @@
 import 'package:material_ui/material_ui.dart';
 
+/// Hace desplazable un estado suelto (cargando, vacío, error) que ocupa todo el alto,
+/// para que "arrastrar para actualizar" funcione aunque no haya lista.
+class Desplazable extends StatelessWidget {
+  const Desplazable({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, limites) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: SizedBox(height: limites.maxHeight, child: child),
+      ),
+    );
+  }
+}
+
 /// Mensaje centrado para los estados "cargando", "error" y "vacío".
 class EstadoCarga extends StatelessWidget {
   const EstadoCarga.cargando(this.mensaje, {super.key})
