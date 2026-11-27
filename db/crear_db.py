@@ -11,16 +11,29 @@ RUTA_DB = CARPETA / 'inventario.db'
 RUTA_ESQUEMA = CARPETA / 'schema.sql'
 
 
-def conectar(ruta=RUTA_DB):
-    conexion = sqlite3.connect(ruta)
+# Segundos que una conexión espera si otra (por ejemplo la API de la otra PC) está escribiendo,
+# en lugar de fallar enseguida con "database is locked".
+ESPERA_BLOQUEO = 30
+
+
+def conectar(ruta=RUTA_DB, check_same_thread=True):
+    conexion = sqlite3.connect(ruta, timeout=ESPERA_BLOQUEO, check_same_thread=check_same_thread)
     conexion.execute('PRAGMA foreign_keys = ON')
     return conexion
 
 
 def crear_db(ruta=RUTA_DB):
-    with conectar(ruta) as conexion:
-        conexion.executescript(RUTA_ESQUEMA.read_text(encoding='utf-8'))
-        migrar(conexion)
+    conexion = conectar(ruta)
+    try:
+        # Modo de diario clásico: WAL no funciona sobre carpetas compartidas (necesita memoria
+        # compartida entre procesos de la misma PC). Solo cambia algo si alguien activó WAL.
+        if conexion.execute('PRAGMA journal_mode').fetchone()[0].lower() == 'wal':
+            conexion.execute('PRAGMA journal_mode = DELETE')
+        with conexion:
+            conexion.executescript(RUTA_ESQUEMA.read_text(encoding='utf-8'))
+            migrar(conexion)
+    finally:
+        conexion.close()
     return ruta
 
 
@@ -71,6 +84,13 @@ def migrar(con):
             con.execute('UPDATE discos SET marca = ? WHERE id = ?', (marca_disco(modelo), id_))
     if 'numero_serie' in discos:
         con.execute('ALTER TABLE discos DROP COLUMN numero_serie')
+
+    # Cola del validador (modo doble API). Solo se agregan columnas: una API con el código
+    # anterior sigue funcionando con la misma base.
+    equipos = _columnas(con, 'equipos')
+    for columna in ('reclamado_por', 'reclamado_en'):
+        if columna not in equipos:
+            con.execute(f'ALTER TABLE equipos ADD COLUMN {columna} TEXT')
 
 
 if __name__ == '__main__':

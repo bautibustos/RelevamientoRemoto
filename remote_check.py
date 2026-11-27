@@ -1,24 +1,8 @@
 import os, wmi, json, subprocess
-from pathlib import Path
+
+import config  # carga el .env
 
 
-def _cargar_env(ruta=Path(__file__).with_name('.env')):
-    """Carga KEY=VALOR del .env en os.environ (sin pisar variables ya definidas)."""
-    if not ruta.exists():
-        return
-    for linea in ruta.read_text(encoding='utf-8').splitlines():
-        linea = linea.strip()
-        if linea and not linea.startswith('#') and '=' in linea:
-            clave, valor = linea.split('=', 1)
-            valor = valor.strip()
-            # Solo se quitan comillas si envuelven el valor completo ("..." o '...'):
-            # una comilla que forma parte de la contraseña se respeta.
-            if len(valor) >= 2 and valor[0] == valor[-1] and valor[0] in '"\'':
-                valor = valor[1:-1]
-            os.environ.setdefault(clave.strip(), valor)
-
-
-_cargar_env()
 # Si el .env no tiene credenciales, WMI se conecta con la sesión actual de Windows.
 us = os.environ.get('WMI_USUARIO', '')
 pwd = os.environ.get('WMI_PASSWORD', '')

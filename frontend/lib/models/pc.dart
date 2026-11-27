@@ -3,6 +3,7 @@ import 'area.dart';
 /// Estado del último relevamiento, tal como lo devuelve la API.
 enum EstadoPc {
   pendiente('pendiente', 'Pendiente'),
+  relevando('relevando', 'Relevando'),
   ok('ok', 'Relevada'),
   sinRespuesta('sin_respuesta', 'Sin respuesta'),
   error('error', 'Error');
@@ -11,6 +12,9 @@ enum EstadoPc {
 
   final String valor;
   final String etiqueta;
+
+  /// El relevamiento todavía no terminó (en cola del validador o en curso).
+  bool get enCurso => this == pendiente || this == relevando;
 
   static EstadoPc desde(String? valor) =>
       EstadoPc.values.firstWhere((e) => e.valor == valor, orElse: () => EstadoPc.pendiente);
@@ -34,13 +38,19 @@ String gbTexto(double gb) =>
 /// Un módulo de RAM: capacidad y velocidad propias (una PC puede tener 16 GB a 2666 + 4 GB a 2133).
 /// Resultado de volver a relevar una PC (POST /pc/{id}/relevar).
 class ResultadoRelevamiento {
-  const ResultadoRelevamiento({required this.ok, required this.detalle});
+  const ResultadoRelevamiento({required this.ok, required this.detalle, this.enCola = false});
 
   final bool ok;
   final String detalle;
 
-  factory ResultadoRelevamiento.fromJson(Map<String, dynamic> json) =>
-      ResultadoRelevamiento(ok: json['ok'] as bool, detalle: json['detalle'] as String? ?? '');
+  /// Modo "carga": la PC quedó en cola y la releva el validador de adentro de la red.
+  final bool enCola;
+
+  factory ResultadoRelevamiento.fromJson(Map<String, dynamic> json) => ResultadoRelevamiento(
+        ok: json['ok'] as bool,
+        detalle: json['detalle'] as String? ?? '',
+        enCola: json['en_cola'] as bool? ?? false,
+      );
 }
 
 class Memoria {
@@ -81,6 +91,7 @@ class Pc {
     required this.id,
     required this.nombre,
     required this.estado,
+    this.relevandoPor,
     this.piso,
     this.area,
     this.red,
@@ -103,6 +114,9 @@ class Pc {
   final int id;
   final String nombre;
   final EstadoPc estado;
+
+  /// Validador que la está relevando (solo con estado "relevando").
+  final String? relevandoPor;
   final String? piso;
   final Area? area;
   final String? red;
@@ -127,6 +141,7 @@ class Pc {
         id: json['id'] as int,
         nombre: json['nombre'] as String,
         estado: EstadoPc.desde(json['estado'] as String?),
+        relevandoPor: json['relevando_por'] as String?,
         piso: json['piso'] as String?,
         area: json['area'] == null ? null : Area.fromJson(json['area'] as Map<String, dynamic>),
         red: json['red'] as String?,

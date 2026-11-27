@@ -4,16 +4,32 @@ Funciones principales:
     guardar_relevamiento(nombre, piso, area, red, info)  -> PC relevada OK
     registrar_fallo(nombre, piso, area, red, estado, error) -> sin respuesta / error
     equipos_a_reintentar()                              -> reemplaza a no-listadas.txt
+
+Cola del validador (modo doble API):
+    reclamar_siguiente(validador)  -> toma una PC 'pendiente' para relevarla
+    encolar(equipo_id)             -> vuelve a dejar una PC en la cola
+    latido(validador, equipo)      -> el validador avisa que sigue vivo
 """
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
+import config
 from . import crear_db
 from .marcas import marca_disco
 
-# Se puede cambiar (por ejemplo en pruebas) para apuntar a otra base.
-RUTA_DB = crear_db.RUTA_DB
+# INVENTARIO_DB (del .env) permite apuntar a otra base, por ejemplo en una carpeta compartida.
+# También se puede cambiar en código (pruebas).
+RUTA_DB = config.ruta_db(crear_db.RUTA_DB)
+
+# Un reclamo más viejo que esto se considera abandonado (el validador se cerró a mitad
+# de un relevamiento) y la PC vuelve a estar disponible para otro.
+RECLAMO_VENCE = timedelta(minutes=10)
+
+# Un validador sin latido en este tiempo se informa como inactivo.
+LATIDO_VENCE = timedelta(seconds=60)
+
+FORMATO_FECHA = '%Y-%m-%d %H:%M:%S'
 
 
 def conectar():
@@ -22,7 +38,20 @@ def conectar():
 
 
 def _ahora():
-    return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    return datetime.now().strftime(FORMATO_FECHA)
+
+
+def _hace(delta):
+    return (datetime.now() - delta).strftime(FORMATO_FECHA)
+
+
+def limite_reclamo():
+    """Fecha a partir de la cual un reclamo sigue vigente."""
+    return _hace(RECLAMO_VENCE)
+
+
+def limite_latido():
+    return _hace(LATIDO_VENCE)
 
 
 def obtener_area_id(con, nombre_area):
@@ -104,7 +133,8 @@ def guardar_relevamiento(nombre, piso, area, red, info):
                     ram_tipo=excluded.ram_tipo,
                     estado='ok', ultimo_error=NULL,
                     fecha_relevamiento=excluded.fecha_relevamiento,
-                    datos_crudos=excluded.datos_crudos
+                    datos_crudos=excluded.datos_crudos,
+                    reclamado_por=NULL, reclamado_en=NULL
                 """,
                 (
                     nombre, piso, area_id, red, info.get('so'), info.get('Usuario'),
@@ -160,7 +190,8 @@ def registrar_fallo(nombre, piso, area, red, estado, error=None):
                 VALUES (?,?,?,?,?,?)
                 ON CONFLICT(nombre) DO UPDATE SET
                     piso=excluded.piso, area_id=excluded.area_id, red=excluded.red,
-                    estado=excluded.estado, ultimo_error=excluded.ultimo_error
+                    estado=excluded.estado, ultimo_error=excluded.ultimo_error,
+                    reclamado_por=NULL, reclamado_en=NULL
                 """,
                 (nombre, piso, area_id, red, estado, error),
             )
@@ -198,5 +229,77 @@ def equipos_a_reintentar():
             ORDER BY e.nombre
             """
         ).fetchall()
+    finally:
+        con.close()
+
+
+# ---------------------------------------------------------------- cola del validador
+def reclamar_siguiente(validador):
+    """Toma la próxima PC 'pendiente' libre y la marca como reclamada por este validador.
+
+    Devuelve (id, nombre, piso, area, red) o None si no hay nada en la cola.
+    BEGIN IMMEDIATE toma el bloqueo de escritura antes de leer: si dos validadores (o dos
+    PCs) buscan a la vez, el segundo espera y ya no ve la PC que tomó el primero.
+    """
+    con = conectar()
+    try:
+        con.execute('BEGIN IMMEDIATE')
+        fila = con.execute(
+            """
+            SELECT e.id, e.nombre, e.piso, a.nombre, e.red
+            FROM equipos e LEFT JOIN areas a ON a.id = e.area_id
+            WHERE e.estado = 'pendiente' AND (e.reclamado_en IS NULL OR e.reclamado_en < ?)
+            ORDER BY e.id LIMIT 1
+            """,
+            (limite_reclamo(),),
+        ).fetchone()
+        if fila:
+            con.execute('UPDATE equipos SET reclamado_por = ?, reclamado_en = ? WHERE id = ?',
+                        (validador, _ahora(), fila[0]))
+        con.commit()
+        return fila
+    except BaseException:
+        con.rollback()
+        raise
+    finally:
+        con.close()
+
+
+def encolar(equipo_id):
+    """Deja la PC 'pendiente' y libre, para que la tome un validador. Devuelve False si no existe."""
+    con = conectar()
+    try:
+        with con:
+            cur = con.execute(
+                "UPDATE equipos SET estado = 'pendiente', ultimo_error = NULL, "
+                'reclamado_por = NULL, reclamado_en = NULL WHERE id = ?',
+                (equipo_id,),
+            )
+        return cur.rowcount > 0
+    finally:
+        con.close()
+
+
+def latido(validador, equipo_actual=None):
+    con = conectar()
+    try:
+        with con:
+            con.execute(
+                """
+                INSERT INTO validadores (nombre, ultimo_latido, equipo_actual) VALUES (?,?,?)
+                ON CONFLICT(nombre) DO UPDATE SET
+                    ultimo_latido=excluded.ultimo_latido, equipo_actual=excluded.equipo_actual
+                """,
+                (validador, _ahora(), equipo_actual),
+            )
+    finally:
+        con.close()
+
+
+def dar_de_baja_validador(validador):
+    con = conectar()
+    try:
+        with con:
+            con.execute('DELETE FROM validadores WHERE nombre = ?', (validador,))
     finally:
         con.close()

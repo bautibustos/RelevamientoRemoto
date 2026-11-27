@@ -5,14 +5,18 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
+import config
 from api.database import get_db
 from api import relevamiento
 from api.red import NOMBRE_VALIDO, hacer_ping
 from api.v1.comunes import Area, area_o_none, limpiar, verificar_area
+from db import db_manager
 
 router = APIRouter(prefix='/pc', tags=['PC'])
 
-Estado = Literal['pendiente', 'ok', 'sin_respuesta', 'error']
+# 'relevando' no se guarda en la base: es una PC 'pendiente' que un validador tomó y todavía
+# no terminó (reclamado_en vigente). Así la base sigue siendo compatible con la versión anterior.
+Estado = Literal['pendiente', 'relevando', 'ok', 'sin_respuesta', 'error']
 
 
 # ---------------------------------------------------------------- modelos
@@ -121,6 +125,7 @@ class PC(BaseModel):
     area: Area | None
     red: str | None
     estado: Estado
+    relevando_por: str | None = Field(None, description='Validador que la está relevando (estado "relevando").')
     ultimo_error: str | None
     fecha_relevamiento: str | None
     so: str | None
@@ -149,12 +154,14 @@ class PCDetalle(PC):
 
 
 class PCCreada(PC):
-    ping: Ping
+    ping: Ping | None = Field(description='Resultado del ping. null en modo "carga": lo hace el validador.')
 
 
 class Relevamiento(BaseModel):
     ok: bool
     detalle: str
+    en_cola: bool = Field(False, description='true en modo "carga": la PC quedó en cola para el validador '
+                                             'y el resultado se ve consultando la PC (GET /pc/{id}).')
 
 
 class PCRelevada(PCDetalle):
@@ -168,16 +175,25 @@ _CAMPOS = (
     'ram_tipo',
 )
 _SELECT = f"""
-    SELECT {', '.join('e.' + c for c in _CAMPOS)}, a.id AS area_id, a.nombre AS area_nombre,
+    SELECT {', '.join('e.' + c for c in _CAMPOS)}, e.reclamado_por, e.reclamado_en,
+           a.id AS area_id, a.nombre AS area_nombre,
            (SELECT SUM(m.capacidad_gb) FROM memorias m WHERE m.equipo_id = e.id) AS ram_total_gb,
            (SELECT COUNT(*) FROM memorias m WHERE m.equipo_id = e.id) AS ram_modulos
     FROM equipos e LEFT JOIN areas a ON a.id = e.area_id
 """
 
+# condición SQL de "un validador la está relevando ahora" (el parámetro es db_manager.limite_reclamo())
+_RELEVANDO = "(e.estado = 'pendiente' AND e.reclamado_en IS NOT NULL AND e.reclamado_en >= ?)"
+
 
 def _a_dict(fila):
     pc = {c: fila[c] for c in (*_CAMPOS, 'ram_total_gb', 'ram_modulos')}
     pc['area'] = area_o_none(fila['area_id'], fila['area_nombre'])
+    relevando = (fila['estado'] == 'pendiente' and fila['reclamado_en'] is not None
+                 and fila['reclamado_en'] >= db_manager.limite_reclamo())
+    if relevando:
+        pc['estado'] = 'relevando'
+    pc['relevando_por'] = fila['reclamado_por'] if relevando else None
     return pc
 
 
@@ -199,7 +215,11 @@ def listar_pcs(
         condiciones.append('e.area_id = ?'); params.append(area_id)
     if piso:
         condiciones.append('e.piso = ? COLLATE NOCASE'); params.append(piso.strip())
-    if estado:
+    if estado == 'relevando':
+        condiciones.append(_RELEVANDO); params.append(db_manager.limite_reclamo())
+    elif estado == 'pendiente':
+        condiciones.append(f"e.estado = 'pendiente' AND NOT {_RELEVANDO}"); params.append(db_manager.limite_reclamo())
+    elif estado:
         condiciones.append('e.estado = ?'); params.append(estado)
     where = f"WHERE {' AND '.join(condiciones)}" if condiciones else ''
     return [_a_dict(f) for f in con.execute(f'{_SELECT} {where} ORDER BY e.nombre', params)]
@@ -223,7 +243,9 @@ def ver_pc(pc_id: int, con: sqlite3.Connection = Depends(get_db)):
 
 @router.post('', response_model=PCCreada, status_code=201, summary='Cargar una PC',
              description='Da de alta la PC y le hace un ping. Si responde queda "pendiente" de relevar; '
-                         'si no, queda "sin_respuesta". El resultado del ping vuelve en el campo "ping".')
+                         'si no, queda "sin_respuesta". El resultado del ping vuelve en el campo "ping". '
+                         'En modo "carga" no hace ping: la PC queda "pendiente" y "ping" vuelve null; '
+                         'el validador de adentro de la red la releva.')
 def crear_pc(datos: PCCrear, con: sqlite3.Connection = Depends(get_db)):
     verificar_area(con, datos.area_id)
     with con:
@@ -236,15 +258,17 @@ def crear_pc(datos: PCCrear, con: sqlite3.Connection = Depends(get_db)):
             raise HTTPException(409, f'Ya existe la PC {datos.nombre}')
     pc_id = cur.lastrowid
 
-    # el ping se hace con la PC ya guardada: si falla, el alta no se pierde
-    ping = hacer_ping(datos.nombre)
-    if not ping.responde:
-        with con:
-            con.execute("UPDATE equipos SET estado = 'sin_respuesta', ultimo_error = ? WHERE id = ?",
-                        (ping.detalle, pc_id))
+    ping = None
+    if config.modo_api() == 'normal':
+        # el ping se hace con la PC ya guardada: si falla, el alta no se pierde
+        ping = hacer_ping(datos.nombre)
+        if not ping.responde:
+            with con:
+                con.execute("UPDATE equipos SET estado = 'sin_respuesta', ultimo_error = ? WHERE id = ?",
+                            (ping.detalle, pc_id))
 
     pc = _a_dict(con.execute(f'{_SELECT} WHERE e.id = ?', (pc_id,)).fetchone())
-    pc['ping'] = {'responde': ping.responde, 'detalle': ping.detalle}
+    pc['ping'] = None if ping is None else {'responde': ping.responde, 'detalle': ping.detalle}
     return pc
 
 
@@ -284,7 +308,9 @@ def editar_pc(pc_id: int, datos: PCEditar, con: sqlite3.Connection = Depends(get
 @router.post('/{pc_id}/relevar', response_model=PCRelevada, summary='Volver a relevar una PC',
              description='Hace ping al equipo y, si responde, consulta su hardware por WMI y lo guarda '
                          '(reemplaza módulos de RAM y discos). Si falla, la PC queda "sin_respuesta" o "error" '
-                         'y conserva el último hardware conocido. Puede tardar hasta un minuto.')
+                         'y conserva el último hardware conocido. Puede tardar hasta un minuto. '
+                         'En modo "carga" no releva: deja la PC "pendiente" en la cola del validador y '
+                         'responde enseguida con relevamiento.en_cola = true.')
 def relevar_pc(pc_id: int, con: sqlite3.Connection = Depends(get_db)):
     fila = con.execute(
         'SELECT e.nombre, e.piso, e.red, a.nombre AS area FROM equipos e '
@@ -294,20 +320,14 @@ def relevar_pc(pc_id: int, con: sqlite3.Connection = Depends(get_db)):
         raise HTTPException(404, f'No existe la PC {pc_id}')
     nombre, piso, red, area = fila['nombre'], fila['piso'], fila['red'], fila['area']
 
-    ping = hacer_ping(nombre)
-    if not ping.responde:
-        relevamiento.registrar_fallo(nombre, piso, area, red, 'sin_respuesta', ping.detalle)
-        resultado = {'ok': False, 'detalle': ping.detalle or 'No respondió al ping.'}
+    if config.modo_api() == 'carga':
+        db_manager.RUTA_DB = relevamiento.RUTA_DB  # la misma base que usa la API
+        db_manager.encolar(pc_id)
+        resultado = {'ok': False, 'en_cola': True,
+                     'detalle': 'Quedó en cola: el validador de adentro de la red la va a relevar.'}
     else:
-        try:
-            info = relevamiento.relevar(nombre)
-        except Exception as e:  # WMI puede fallar de muchas formas (acceso, RPC, timeouts)
-            detalle = relevamiento.mensaje_de_error(e)
-            relevamiento.registrar_fallo(nombre, piso, area, red, 'error', detalle)
-            resultado = {'ok': False, 'detalle': f'No se pudo consultar el hardware: {detalle}'}
-        else:
-            relevamiento.guardar(nombre, piso, area, red, info)
-            resultado = {'ok': True, 'detalle': 'Hardware actualizado desde el equipo.'}
+        ok, detalle = relevamiento.relevar_y_guardar(nombre, piso, area, red)
+        resultado = {'ok': ok, 'detalle': detalle}
 
     pc = ver_pc(pc_id, con)
     pc['relevamiento'] = resultado

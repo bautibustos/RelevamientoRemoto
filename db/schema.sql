@@ -47,10 +47,25 @@ CREATE TABLE IF NOT EXISTS equipos (
                         CHECK (estado IN ('pendiente','ok','sin_respuesta','error')),
     ultimo_error        TEXT,
     fecha_relevamiento  TEXT,                                  -- ISO 8601
-    datos_crudos        TEXT                                   -- JSON completo de WMI
+    datos_crudos        TEXT,                                  -- JSON completo de WMI
+
+    -- cola del validador (modo doble API): una PC 'pendiente' con reclamado_en es la que
+    -- un validador está relevando en este momento. La API la informa como 'relevando'.
+    reclamado_por       TEXT,                                  -- nombre del validador
+    reclamado_en        TEXT                                   -- cuándo la tomó (ISO 8601)
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_equipos_area ON equipos(area_id);
+
+-- ============================================================
+-- Validadores (modo doble API): cada uno anota cada tanto que sigue vivo,
+-- así la API de afuera sabe si hay alguien procesando la cola.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS validadores (
+    nombre          TEXT PRIMARY KEY,                          -- SERVIDOR01 (pid 1234)
+    ultimo_latido   TEXT NOT NULL,                             -- ISO 8601
+    equipo_actual   TEXT                                       -- PC que está relevando, si hay
+) STRICT;
 
 -- ============================================================
 -- Discos internos (1 PC -> N discos). Los USB no se registran.

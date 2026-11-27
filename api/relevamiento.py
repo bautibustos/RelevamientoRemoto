@@ -43,3 +43,24 @@ def guardar(nombre, piso, area, red, info):
 def registrar_fallo(nombre, piso, area, red, estado, detalle):
     db_manager.RUTA_DB = RUTA_DB
     db_manager.registrar_fallo(nombre, piso, area, red, estado, detalle)
+
+
+def relevar_y_guardar(nombre, piso, area, red):
+    """Ping + WMI + guardado del resultado (o del fallo). Devuelve (ok, detalle).
+
+    Lo usan el endpoint "Volver a relevar" (modo normal) y el validador.
+    """
+    from api.red import hacer_ping
+
+    ping = hacer_ping(nombre)
+    if not ping.responde:
+        registrar_fallo(nombre, piso, area, red, 'sin_respuesta', ping.detalle)
+        return False, ping.detalle or 'No respondió al ping.'
+    try:
+        info = relevar(nombre)
+    except Exception as e:  # WMI puede fallar de muchas formas (acceso, RPC, timeouts)
+        detalle = mensaje_de_error(e)
+        registrar_fallo(nombre, piso, area, red, 'error', detalle)
+        return False, f'No se pudo consultar el hardware: {detalle}'
+    guardar(nombre, piso, area, red, info)
+    return True, 'Hardware actualizado desde el equipo.'

@@ -76,7 +76,11 @@ class _CargarPcScreenState extends State<CargarPcScreen> {
         mostrarAviso(
           context,
           titulo: 'Equipo $nombre guardado',
-          detalle: ping == null ? null : 'Respondió al ping: está en red y listo para relevar.',
+          // sin ping = API en modo "carga": el ping y el relevamiento los hace el validador
+          detalle: ping == null
+              ? 'Quedó en cola: el validador de adentro de la red lo va a relevar. '
+                  'Abrí el equipo en Consultar para ver el avance.'
+              : 'Respondió al ping: está en red y listo para relevar.',
         );
       } else {
         mostrarAviso(

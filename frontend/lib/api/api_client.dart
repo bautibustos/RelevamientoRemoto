@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../models/area.dart';
 import '../models/monitor.dart';
 import '../models/pc.dart';
+import '../models/sistema.dart';
 
 /// Error devuelto por la API (o por la red) con un mensaje listo para mostrar.
 class ApiException implements Exception {
@@ -80,9 +81,20 @@ class ApiClient {
   }
 
   /// Vuelve a consultar el hardware del equipo por WMI. Puede tardar hasta un minuto.
+  /// En modo "carga" responde enseguida con [ResultadoRelevamiento.enCola]: el resultado
+  /// llega después, consultando la PC con [pc].
   Future<(Pc, ResultadoRelevamiento)> relevarPc(int id) async {
     final datos = await _enviar(() => _http.post(_uri('/pc/$id/relevar'))) as Map<String, dynamic>;
     return (Pc.fromJson(datos), ResultadoRelevamiento.fromJson(datos['relevamiento'] as Map<String, dynamic>));
+  }
+
+  /// Modo de la API y validadores vivos. Devuelve null si la API no lo informa (versión anterior).
+  Future<EstadoSistema?> sistema() async {
+    try {
+      return EstadoSistema.fromJson(await _get('/sistema') as Map<String, dynamic>);
+    } catch (_) {
+      return null; // es información extra: si falla, la app sigue funcionando como antes
+    }
   }
 
   // ------------------------------------------------------------------ monitores

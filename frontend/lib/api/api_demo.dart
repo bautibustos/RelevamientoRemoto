@@ -179,6 +179,15 @@ http.Client clienteDemo({Duration demora = const Duration(milliseconds: 250)}) {
       }, 201);
     }
 
+    if (req.method == 'GET' && ruta == '/sistema') {
+      return json({
+        'modo': 'normal',
+        'validador_local': false,
+        'validadores': [],
+        'cola': {'pendientes': pcs.where((p) => p['estado'] == 'pendiente').length, 'relevando': 0},
+      });
+    }
+
     if (req.method == 'GET' && ruta == '/interfaces') {
       return json([for (final (i, n) in interfaces.indexed) {'id': i + 1, 'nombre': n}]);
     }
